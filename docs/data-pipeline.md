@@ -18,8 +18,9 @@ identifier `perron`. Requests use
 The filename `emiter.py` follows the requested layout. `__init__.py` marks the
 ingestion package. Cleaning lives in `normalizer.py`, and all API access and
 caching live in `connector.py`. The ingestion layer emits base facts; reasoning
-rules belong to the caller's ontology. The supported dataset is currently
-`perron`; use `python -m ingestion.ingest` as the ingestion entry point.
+rules belong to the caller's ontology. Use `python -m ingestion.ingest` for the
+platform-only flow. The additional DiDok and WiFi adapters, shared connector,
+and combined query harness are documented in [reasoning-demo.md](reasoning-demo.md).
 
 ## Running
 
@@ -73,6 +74,12 @@ The connector rejects incomplete responses and changing totals. Ordered paginati
 is not a transactional API snapshot, so upstream edits during a download can still
 affect rows. The records endpoint's 10,000-row window is sufficient for `perron`;
 larger datasets would require an export connector.
+
+`fetch_dataset_records(dataset_id, *, order_by=None, where=None, ...)` shares this
+download/cache logic across adapters. Generic cache filenames include a hash of
+the filter and ordering to prevent reusing a different request's snapshot.
+`fetch_records(...)` remains the platform wrapper; existing `perron/all.json`
+and `perron/limit_<n>.json` caches remain compatible.
 
 All original record fields remain in the cache. Normalization failures include
 the row index and `fid`; they do not silently drop records. Identical duplicate

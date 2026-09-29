@@ -22,7 +22,7 @@ from pathlib import Path
 
 from framex import Client
 
-facts = Path("data/generated_facts.fx").read_text(encoding="utf-8")
+facts = Path("data/platforms.fx").read_text(encoding="utf-8")
 ontology = Path("ontology.fx").read_text(encoding="utf-8")
 
 with Client() as client:
@@ -66,24 +66,30 @@ Run the ingestion with a bounded sample first:
 
 ```powershell
 $env:PYTHONPATH = "src"
-python -m ingestion.pipeline data/generated_facts.fx --station-limit 100 --connection-limit 36
-framex check data/generated_facts.fx
-framex validate data/generated_facts.fx
-framex report data/generated_facts.fx
+python -m ingestion.ingest --limit 100 --dry-run
+framex check ontology.fx data/platforms.fx
+framex validate ontology.fx data/platforms.fx
+framex report ontology.fx data/platforms.fx
 ```
 
 Check all of the following before trusting the result:
 
-1. The API response count is plausible and the output has non-zero `Station`
-   and `DirectConnection` facts.
-2. Every emitted station has a stable DIDOK-based identifier when the source
-   provides one, a non-empty name, and valid coordinates when available.
-3. Every station has `TRAIN` or `RACK_RAILWAY` in its source transport modes.
-4. Every `startStation`, `endStation`, and `viaStation` reference is an
-   unquoted FrameX object identifier, not a string literal.
+1. The API response count is plausible and the platform output has non-zero
+   `Station` and `Platform` facts.
+2. Full-UIC station identifiers join across datasets; missing optional values
+   remain unknown rather than being fabricated.
+3. DiDok service points are Swiss passenger-rail stops with positive `TRAIN`
+   or `RACK_RAILWAY` source evidence.
+4. `station`, `atStopPoint`, `inCanton`, and `servesMode` references are unquoted
+   FrameX object identifiers, not string literals.
 5. The generated file passes `framex check` and `framex validate`.
 6. The FrameX `stats()` result is recorded for the sample and full dataset so
    accidental data-volume changes are visible in review.
+
+For the combined platform/DiDok/WiFi flow, use `python -m ingestion.prepare`
+followed by `python -m query --validate`. See [reasoning-demo.md](reasoning-demo.md)
+for separate integration tests and known validation conflicts; the current live
+sources disagree on some station-name spellings, so full validation is not clean.
 
 ## Reasoning correctness checks
 

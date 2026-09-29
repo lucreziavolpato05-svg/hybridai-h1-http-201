@@ -89,5 +89,21 @@ Platform length is **structural length**, not necessarily usable boarding length
 rail-free access does not imply wheelchair accessibility.
 
 See [the pipeline documentation](docs/data-pipeline.md) for field mappings,
-Python integration, cache behavior, and tests. `python -m ingestion.ingest` is
-the ingestion entry point; the supported dataset is currently `perron`.
+Python integration, cache behavior, and tests. `python -m ingestion.ingest`
+remains the platform-only entry point.
+
+## Combined ontology demo
+
+The shared connector also supports DiDok service points and Wifi@Station, each
+with its own typed adapter. Prepare all three datasets, then query local facts:
+
+```powershell
+$env:PYTHONPATH = "src"
+$env:Path += ";C:\Users\Levashenko\bin"
+uv run --python 3.12 -m ingestion.prepare --as-of 2026-09-29
+uv run --python 3.12 -m query
+```
+
+The query command loads `ontology.fx` and the three generated fact files. It
+performs no API requests. See [reasoning and dataset integration](docs/reasoning-demo.md)
+for tests, specific queries, explanations, and the known source-data limitations.

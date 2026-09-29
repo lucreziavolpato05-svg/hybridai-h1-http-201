@@ -9,6 +9,8 @@ __pycache__/
 # Generated ingestion output
 data/generated_facts.fx
 data/platforms.fx
+data/service_points.fx
+data/wifi.fx
 data/raw/*
 !data/raw/.gitkeep
 .uv-cache/

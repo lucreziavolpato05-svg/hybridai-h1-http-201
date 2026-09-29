@@ -1,11 +1,13 @@
-"""Download SBB platform records and cache complete raw snapshots."""
+"""Download SBB Explore records and cache complete, request-specific snapshots."""
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from datetime import datetime, timezone
+from hashlib import sha256
 from pathlib import Path
 from urllib.error import URLError
 from urllib.parse import urlencode
@@ -32,23 +34,45 @@ def fetch_records(
     *, limit: int | None = None, raw_dir: Path = DEFAULT_RAW_DIR,
     refresh: bool = False, timeout: float = 30,
 ) -> list[dict]:
+    """Backward-compatible platform download, including its existing cache path."""
+    return fetch_dataset_records(DATASET_ID, order_by="fid", limit=limit,
+                                 raw_dir=raw_dir, refresh=refresh, timeout=timeout)
+
+
+def fetch_dataset_records(
+    dataset_id: str, *, order_by: str | None = None, where: str | None = None,
+    limit: int | None = None, raw_dir: Path = DEFAULT_RAW_DIR,
+    refresh: bool = False, timeout: float = 30,
+) -> list[dict]:
     """Reuse a complete snapshot unless refresh=True; retain untouched fields.
 
     Limited downloads have separate cache files so a sample can never masquerade
     as a full dataset. A failed refresh leaves the previous snapshot intact.
     """
+    if not isinstance(dataset_id, str) or not re.fullmatch(r"[a-zA-Z0-9_-]+", dataset_id):
+        raise ValueError("dataset_id must be an SBB dataset slug")
+    for name, value in (("order_by", order_by), ("where", where)):
+        if value is not None and (not isinstance(value, str) or not value.strip()):
+            raise ValueError(f"{name} must be a non-empty string or None")
     if limit is not None and (type(limit) is not int or limit < 0):
         raise ValueError("limit must be a non-negative integer or None")
     if limit == 0:
         return []
-    endpoint = f"{API_BASE}/{DATASET_ID}/records"
-    cache_path = Path(raw_dir) / DATASET_ID / ("all.json" if limit is None else f"limit_{limit}.json")
+    endpoint = f"{API_BASE}/{dataset_id}/records"
+    options = {"order_by": order_by, "where": where}
+    legacy_platform = dataset_id == DATASET_ID and options == {"order_by": "fid", "where": None}
+    suffix = "" if legacy_platform else "_" + sha256(json.dumps(options, sort_keys=True).encode()).hexdigest()[:16]
+    cache_name = ("all" if limit is None else f"limit_{limit}") + suffix + ".json"
+    cache_path = Path(raw_dir) / dataset_id / cache_name
     if cache_path.exists() and not refresh:
         try:
             snapshot = json.loads(cache_path.read_text(encoding="utf-8"))
             total, records = _page(snapshot)
             if snapshot.get("source_url") != endpoint or snapshot.get("requested_limit") != limit:
                 raise ValueError("cache request does not match")
+            cached_options = snapshot.get("options", {"order_by": "fid", "where": None} if legacy_platform else None)
+            if cached_options != options:
+                raise ValueError("cache filter or ordering does not match")
             if len(records) != (total if limit is None else min(total, limit)):
                 raise ValueError("incomplete cached snapshot")
             return records
@@ -61,7 +85,9 @@ def fetch_records(
         page_size = PAGE_SIZE if limit is None else min(PAGE_SIZE, limit - len(records))
         if len(records) + page_size > 10_000:
             raise ValueError("Dataset exceeds the Explore records window; use the SBB exports API")
-        query = urlencode({"limit": page_size, "offset": len(records), "order_by": "fid"})
+        parameters = {"limit": page_size, "offset": len(records)}
+        parameters.update({name: value for name, value in options.items() if value is not None})
+        query = urlencode(parameters)
         request = Request(f"{endpoint}?{query}", headers={
             "Accept": "application/json", "User-Agent": "sbb-framex-ingestion/1.0",
         })
@@ -69,7 +95,7 @@ def fetch_records(
             with urlopen(request, timeout=timeout) as response:
                 total, page = _page(json.load(response))
         except (URLError, OSError, ValueError) as exc:
-            raise RuntimeError(f"SBB {DATASET_ID} download failed at offset {len(records)}: {exc}") from exc
+            raise RuntimeError(f"SBB {dataset_id} download failed at offset {len(records)}: {exc}") from exc
         if total_count is not None and total != total_count:
             raise RuntimeError("SBB record count changed during download; retry with --refresh")
         total_count = total
@@ -80,7 +106,7 @@ def fetch_records(
         records.extend(page)
 
     snapshot = {
-        "dataset_id": DATASET_ID, "source_url": endpoint,
+        "dataset_id": dataset_id, "source_url": endpoint, "options": options,
         "fetched_at": datetime.now(timezone.utc).isoformat(),
         "requested_limit": limit, "total_count": total_count, "results": records,
     }

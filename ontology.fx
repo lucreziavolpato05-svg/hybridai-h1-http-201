@@ -70,6 +70,13 @@ declare required Platform platformLength.
 ?S:Junction <- ?S[servedByLine -> ?L1] AND ?S[servedByLine -> ?L2] AND ?L1 != ?L2.
 
 // Long-distance categories are declared as LongDistanceCategory facts.
+ldc_ic:LongDistanceCategory[label -> "IC"].
+ldc_ir:LongDistanceCategory[label -> "IR"].
+ldc_ec:LongDistanceCategory[label -> "EC"].
+ldc_ice:LongDistanceCategory[label -> "ICE"].
+ldc_tgv:LongDistanceCategory[label -> "TGV"].
+ldc_nj:LongDistanceCategory[label -> "NJ"].
+ldc_rjx:LongDistanceCategory[label -> "RJX"].
 ?S:LongDistanceStation <- ?S[servedByCategory -> ?C] AND ?K:LongDistanceCategory[label -> ?C].
 
 // Positive evidence only: under open-world reasoning, missing facilities do not
@@ -82,6 +89,9 @@ declare required Platform platformLength.
 ?E1[nextActualStop -> ?E2] <- ?E1[nextStop -> ?E2] AND ?E2[actuallyStops -> true].
 ?E1[nextActualStop -> ?E3] <- ?E1[nextStop -> ?E2]
     AND ?E2[passesThrough -> true]
+    AND ?E2[nextActualStop -> ?E3].
+?E1[nextActualStop -> ?E3] <- ?E1[nextStop -> ?E2]
+    AND ?E2[cancelled -> true]
     AND ?E2[nextActualStop -> ?E3].
 
 // A non-stop link connects two consecutive actual stop points.
