@@ -8,4 +8,7 @@ __pycache__/
 
 # Generated ingestion output
 data/generated_facts.fx
-data/raw/
+data/platforms.fx
+data/raw/*
+!data/raw/.gitkeep
+.uv-cache/

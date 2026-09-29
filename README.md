@@ -55,34 +55,39 @@ Your codebase is prepared for the hackahton! ⛏️
 
 ## SBB to FrameX data flow
 
-The ingestion boundary is kept separate from the ontology and reasoning rules:
+Start with SBB's [Stop: platform length (body)](https://data.sbb.ch/explore/dataset/perron/)
+dataset (`perron`). The pipeline uses Python's standard library and the existing
+[FrameX client](https://unisg-ics-dsnlp.github.io/FrameX-Doc/python/client.html):
 
 ```text
-SBB API -> src/ingestion/download.py
-				-> src/ingestion/clean.py
-				-> src/ingestion/normalize.py
-				-> src/ingestion/facts.py
-				-> data/generated_facts.fx
+SBB API -> connector.py -> data/raw/perron/ (JSON cache)
+                       -> normalizer.py -> emiter.py -> ingest.py -> client.add
+                                                    -> data/platforms.fx
 ```
 
-Generate a small development dataset from the SBB API:
+From the repository root in PowerShell, download, cache, and generate F-logic
+without starting the engine:
 
-```bash
-PYTHONPATH=src python -m ingestion.pipeline data/generated_facts.fx \
-	--station-limit 100 --connection-limit 36
+```powershell
+$env:PYTHONPATH = "src"
+uv run --python 3.12 -m ingestion.ingest --dry-run
 ```
 
-The generated file is loaded alongside the team's ontology and rules:
+Run the complete pipeline and query the loaded platforms:
 
-```python
-from framex import Client
-
-with Client() as client:
-		client.load_program(path="data/generated_facts.fx")
-		print(client.query("?- ?X:Station."))
-		print(client.stats())
+```powershell
+uv run --python 3.12 -m ingestion.ingest --binary "C:\Users\Levashenko\bin\framex.exe" --query '?- ?P:Platform.'
 ```
 
-Use no limits for the full available station and direct-connection datasets. The
-generated `.fx` file is ignored by Git; commit the ingestion source, not its
-downloaded output.
+You can omit `--binary` when `framex` is on PATH. On macOS/Linux, prefix the
+command with `PYTHONPATH=src` instead of setting `$env:PYTHONPATH`.
+
+Use `--limit 10` for a sample and `--refresh` to replace the cached snapshot with
+fresh API data. By default the whole dataset is downloaded and subsequent runs
+reuse its cache. `data/raw/` snapshots and `data/platforms.fx` are ignored by Git.
+Platform length is **structural length**, not necessarily usable boarding length;
+rail-free access does not imply wheelchair accessibility.
+
+See [the pipeline documentation](docs/data-pipeline.md) for field mappings,
+Python integration, cache behavior, and tests. `python -m ingestion.ingest` is
+the ingestion entry point; the supported dataset is currently `perron`.

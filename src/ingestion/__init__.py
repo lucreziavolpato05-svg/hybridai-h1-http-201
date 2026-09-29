@@ -1,1 +1,1 @@
-"""SBB data ingestion pipeline for FrameX."""
+"""SBB platform ingestion: connector -> normalizer -> emiter -> ingest."""
