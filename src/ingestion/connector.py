@@ -110,6 +110,11 @@ def fetch_dataset_records(
         "fetched_at": datetime.now(timezone.utc).isoformat(),
         "requested_limit": limit, "total_count": total_count, "results": records,
     }
+    _write_snapshot(cache_path, snapshot)
+    return records
+
+
+def _write_snapshot(cache_path: Path, snapshot: dict) -> None:
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
     try:
@@ -122,4 +127,49 @@ def fetch_dataset_records(
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
+
+
+def fetch_dataset_export(
+    dataset_id: str, *, where: str | None = None, raw_dir: Path = DEFAULT_RAW_DIR,
+    refresh: bool = False, timeout: float = 120,
+) -> list[dict]:
+    """Fetch a complete JSON export, verifying its size against the API count.
+
+    No records-window pagination or truncation: a single export preserves whole
+    journeys. Cache metadata records the URL, filters, retrieval time and count.
+    """
+    if not isinstance(dataset_id, str) or not re.fullmatch(r"[a-zA-Z0-9_-]+", dataset_id):
+        raise ValueError("dataset_id must be an SBB dataset slug")
+    options = {"where": where}
+    endpoint = f"{API_BASE}/{dataset_id}/exports/json"
+    key = sha256(json.dumps(options, sort_keys=True).encode()).hexdigest()[:16]
+    path = Path(raw_dir) / dataset_id / f"export_{key}.json"
+    if path.exists() and not refresh:
+        snapshot = json.loads(path.read_text(encoding="utf-8"))
+        total, records = _page(snapshot)
+        if (snapshot.get("source_url") != endpoint or snapshot.get("options") != options
+                or len(records) != total):
+            raise ValueError(f"Invalid export cache {path}; use --refresh")
+        return records
+
+    def get(url: str):
+        request = Request(url, headers={"Accept": "application/json", "User-Agent": "sbb-framex-ingestion/1.0"})
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                return json.load(response)
+        except (URLError, OSError, ValueError) as exc:
+            raise RuntimeError(f"SBB export failed for {dataset_id}: {exc}") from exc
+
+    filters = {"where": where} if where is not None else {}
+    count_url = f"{API_BASE}/{dataset_id}/records?" + urlencode({"limit": 1, **filters})
+    before, _ = _page(get(count_url))
+    records = get(endpoint + "?" + urlencode({"limit": -1, **filters}))
+    if not isinstance(records, list) or any(not isinstance(row, dict) for row in records):
+        raise ValueError("SBB JSON export must be an array of records")
+    after, _ = _page(get(count_url))
+    if before != after or len(records) != after:
+        raise ValueError("Incomplete or changing SBB export; previous cache preserved; retry --refresh")
+    _write_snapshot(path, {"dataset_id": dataset_id, "source_url": endpoint, "options": options,
+                          "fetched_at": datetime.now(timezone.utc).isoformat(),
+                          "total_count": after, "results": records})
     return records

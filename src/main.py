@@ -1,14 +1,6 @@
-"""Build and query a FrameX ontology of the Swiss rail passenger network."""
+"""Submission entry point for the real offline SBB reasoning system."""
 
-from framex import Client
-
-
-def main(argv=None) -> int:
-    with Client() as client:
-        client.load("world open.\n socrates:Human.\n ?X:Mortal <- ?X:Human.")
-        result = client.query("?- socrates:Mortal.")
-        print(result)  # {'status': 'true', 'bindings': []}
-    return 0
+from query import main
 
 
 if __name__ == "__main__":
