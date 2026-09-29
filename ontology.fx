@@ -17,7 +17,9 @@ LongDistanceCategory { label: String }.
 
 // Compatibility with the initial ingestion sample.
 ?S:StopPoint <- ?S:Station.
-?S[designation -> ?N] <- ?S:Station[name -> ?N].
+// Opt-in only for standalone legacy fixtures. DiDok owns real designations.
+LegacyNamedStation extends Station.
+?S[designation -> ?N] <- ?S:LegacyNamedStation[name -> ?N].
 // Compatibility with the platform ingestion field names.
 ?P[atStopPoint -> ?S] <- ?P:Platform[station -> ?S].
 ?P[platformNumber -> ?N] <- ?P:Platform[number -> ?N].

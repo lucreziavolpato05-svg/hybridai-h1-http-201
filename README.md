@@ -57,6 +57,11 @@ On macOS/Linux, use `PYTHONPATH=src` (and, if needed,
 option filters DiDok validity; it does not recreate an earlier API snapshot. For
 identical live results, retain and reuse the same local `data/raw/` snapshots.
 
+## AI-assisted development
+
+Tool: OpenAI Codex in VS Code.
+Model: **MODEL_NAME_TO_FILL_IN_BEFORE_SUBMISSION** (exact model not yet confirmed).
+
 Before you start coding, your team needs to create a shared repository and set up the Python development environment. 🚀
 
 We will use: 

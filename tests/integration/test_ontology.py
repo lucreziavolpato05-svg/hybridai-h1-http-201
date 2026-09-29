@@ -31,7 +31,7 @@ class OntologyTests(unittest.TestCase):
 
     def test_platform_compatibility_and_strict_length_threshold(self):
         self.client.add(source='''
-            station_test:Station[name -> "Test"].
+            station_test:LegacyNamedStation[name -> "Test"].
             platform_test:Platform[station -> station_test; number -> "1/2"; structuralLengthM -> 539.0].
             platform_boundary:Platform[structuralLengthM -> 320.0].
             platform_missing:Platform.
@@ -59,6 +59,15 @@ class OntologyTests(unittest.TestCase):
         self.assert_status('quiet[busyIn("2025") -> true]', "unknown")
         self.assert_status("numeric[busyIn(2025) -> true]")
         self.assert_status('numeric[busyIn("2025") -> true]', "unknown")
+
+    def test_didok_designation_is_not_overwritten_by_platform_name(self):
+        self.client.add(source='''
+            station_test:Station[name -> "Zurich HB"].
+            station_test:StopPoint[designation -> "Zürich HB"].
+        ''')
+        self.assert_status('station_test[designation -> "Zürich HB"]')
+        self.assert_status('station_test[designation -> "Zurich HB"]', "unknown")
+        self.assertEqual(self.client.validate()["violations"], [])
 
     def test_junction_requires_distinct_lines(self):
         self.client.add(source='''
