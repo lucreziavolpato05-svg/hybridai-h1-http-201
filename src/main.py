@@ -8,7 +8,7 @@ def main(argv=None) -> int:
         client.load("world open.\n socrates:Human.\n ?X:Mortal <- ?X:Human.")
         result = client.query("?- socrates:Mortal.")
         print(result)  # {'status': 'true', 'bindings': []}
-    return 1
+    return 0
 
 
 if __name__ == "__main__":

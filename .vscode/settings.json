@@ -1,0 +1,6 @@
+{
+    "code-runner.runInTerminal": true,
+    "code-runner.executorMap": {
+        "python": "cmd /c \"set PATH=C:\\Users\\limji\\bin;%PATH%&& python -u \\\"$fullFileName\\\"\""
+    }
+}

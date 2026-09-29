@@ -5,3 +5,7 @@
 .venv/
 __pycache__/
 *.pyc
+
+# Generated ingestion output
+data/generated_facts.fx
+data/raw/

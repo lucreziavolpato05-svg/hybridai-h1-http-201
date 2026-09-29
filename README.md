@@ -52,3 +52,37 @@ uv init --bare --python 3.12
 
 ### 5. You are all set
 Your codebase is prepared for the hackahton! ⛏️
+
+## SBB to FrameX data flow
+
+The ingestion boundary is kept separate from the ontology and reasoning rules:
+
+```text
+SBB API -> src/ingestion/download.py
+				-> src/ingestion/clean.py
+				-> src/ingestion/normalize.py
+				-> src/ingestion/facts.py
+				-> data/generated_facts.fx
+```
+
+Generate a small development dataset from the SBB API:
+
+```bash
+PYTHONPATH=src python -m ingestion.pipeline data/generated_facts.fx \
+	--station-limit 100 --connection-limit 36
+```
+
+The generated file is loaded alongside the team's ontology and rules:
+
+```python
+from framex import Client
+
+with Client() as client:
+		client.load_program(path="data/generated_facts.fx")
+		print(client.query("?- ?X:Station."))
+		print(client.stats())
+```
+
+Use no limits for the full available station and direct-connection datasets. The
+generated `.fx` file is ignored by Git; commit the ingestion source, not its
+downloaded output.
