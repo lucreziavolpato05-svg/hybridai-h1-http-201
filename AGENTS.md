@@ -221,3 +221,14 @@ the ingestion app. This is a required handoff procedure, not a background hook.
   was run.
 - Open: the existing live source-name validation conflicts and remaining adapters.
   Next feature remains dated StopEvent ingestion.
+
+### 2026-09-29 — Team and reproduction README details
+
+- Added the Https201 team name, member roles, project overview, coding-agent
+  disclosure, and a concise reproducible setup/run sequence to the README.
+- Documentation-only update: reviewed the Markdown sections and commands and ran
+  `git diff --check`; executable tests were not rerun. Live snapshots remain
+  necessary for identical live-data results because `--as-of` is not a historical
+  API snapshot selector.
+- Open: the existing live source-name validation conflicts and remaining adapters.
+  Next feature remains dated StopEvent ingestion.

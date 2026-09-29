@@ -1,4 +1,61 @@
-# Hackathon 1 - Derive From Knowledge
+# Https201 — Derive From Knowledge
+
+## Team
+
+| Member | Role |
+| --- | --- |
+| Wee Siang | Developer |
+| Ethan | Developer |
+| Lucrezia Volpato | Domain Expert |
+| Egor Levashenko | Auditor |
+
+## Project overview
+
+Https201 is a knowledge-based Swiss rail reasoning system. It downloads and
+caches selected SBB Open Data datasets, normalizes each source into base F-logic
+facts, and combines them with `ontology.fx` in FrameX. The ontology, rather than
+application code, derives facts such as long platforms, train/tram interchanges,
+and WiFi-equipped stations. Once the local fact files have been prepared, all
+queries run offline against the local ontology and facts.
+
+The initial sources are platform lengths, DiDok service points, and Wifi@Station.
+Their raw API snapshots are cached locally but deliberately excluded from Git.
+
+## Coding agents and models
+
+The team used **Claude** and **Codex** as coding agents/models for implementation
+and documentation support. Team members review the resulting code, ontology,
+tests, and documentation before accepting changes.
+
+## Reproduce the results
+
+From this project directory, install the Python environment and make the FrameX
+executable available on `PATH` (or set `FRAMEX_BINARY` to its path):
+
+```powershell
+uv sync
+$env:PYTHONPATH = "src"
+$env:FRAMEX_BINARY = "C:\path\to\framex.exe" # omit when framex is on PATH
+```
+
+Prepare the local facts once, then run the offline demos and test suites:
+
+```powershell
+# Downloads only missing raw snapshots; later runs reuse data/raw/.
+uv run --python 3.12 -m ingestion.prepare --as-of 2026-09-29
+
+# Loads ontology.fx plus the generated local fact files; makes no API requests.
+uv run --python 3.12 -m query
+
+# Verify the implementation.
+uv run --python 3.12 -m unittest discover -s tests -v
+uv run --python 3.12 -m unittest discover -s tests/integration -v
+```
+
+On macOS/Linux, use `PYTHONPATH=src` (and, if needed,
+`FRAMEX_BINARY=/path/to/framex`) before the corresponding command. The `--as-of`
+option filters DiDok validity; it does not recreate an earlier API snapshot. For
+identical live results, retain and reuse the same local `data/raw/` snapshots.
 
 Before you start coding, your team needs to create a shared repository and set up the Python development environment. 🚀
 
