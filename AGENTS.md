@@ -109,7 +109,8 @@ uv run --python 3.12 -m query --explain 'platform_35292761:LongPlatform'
 git diff --check
 ```
 
-Preparation accepts `--datasets`, `--limit`, `--refresh`, and `--as-of YYYY-MM-DD`.
+Preparation accepts `--datasets` (`platforms`, `service_points`, and `wifi`;
+`didok` remains an alias), `--limit`, `--refresh`, and `--as-of YYYY-MM-DD`.
 The default validity date is today; `--as-of` filters DiDok validity, not the API's
 historical state. A small sample may omit named demo stations. The query CLI
 accepts `--binary`, `--ontology`, `--facts`, and repeatable `--query`/`--demo`/
@@ -131,7 +132,8 @@ snapshots and previous verification, not expected constants for future tests.
   out of 79 inventory rows. Six missing-BPUIC rows are reported and skipped.
 - Ontology fixes: cancelled intermediate events can be skipped in non-stop
   chains; IC, IR, EC, ICE, TGV, NJ, RJX category seeds are present.
-- Last full code verification: **40 unit tests and 14 integration tests passed**.
+- Last code verification: **42 unit tests and 14 real-engine integration tests
+  passed** on 2026-09-29.
   Tests cover joins, thresholds, cancellation, missing values, positive-only
   WiFi, open-world negation, and rule explanations.
 - Live query coverage: Chur WiFi, Zürich HB platforms/lengths, Bern long platforms,
@@ -203,3 +205,19 @@ the ingestion app. This is a required handoff procedure, not a background hook.
   tests were not rerun; the 40/14 counts above belong to the prior session.
 - Verification: reviewed the new file, local link targets, and whitespace checks.
   Open issues and the recommended next feature remain unchanged.
+
+### 2026-09-29 — Configurable initial dataset preparation and query guide
+
+- Replaced the preparation CLI's dataset branches with a registry for platforms,
+  service points, and WiFi. All selected sources share `data/raw/`; their caches
+  are reused unless `--refresh` is requested. `service_points` is the canonical
+  CLI name and `didok` remains a compatible alias.
+- Expanded README with one-time local setup/cache behavior and copyable custom
+  F-logic query examples. Updated the reasoning guide's canonical dataset name.
+- Verification this session: `PYTHONPATH=src uv run --python 3.12 -m unittest
+  discover -s tests -v` passed **42 tests** and the separate integration suite
+  passed **14 real-engine tests**; `python -m ingestion.prepare --help` shows
+  the canonical dataset choices; `git diff --check` passed. No live API request
+  was run.
+- Open: the existing live source-name validation conflicts and remaining adapters.
+  Next feature remains dated StopEvent ingestion.

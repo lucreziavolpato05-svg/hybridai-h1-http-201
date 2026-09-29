@@ -94,16 +94,61 @@ remains the platform-only entry point.
 
 ## Combined ontology demo
 
-The shared connector also supports DiDok service points and Wifi@Station, each
-with its own typed adapter. Prepare all three datasets, then query local facts:
+The shared preparation command downloads and caches the three initial sources:
+platforms (`perron`), service points (DiDok), and Wifi@Station. They all use one
+local raw-data root, `data/raw/`, with an isolated subdirectory per API dataset.
+The first command below downloads only snapshots missing from that cache and
+generates local fact files. Later runs reuse those snapshots, so they do not call
+the APIs. The raw snapshots and generated `.fx` files are intentionally ignored
+by Git; every developer runs this setup locally once.
 
 ```powershell
 $env:PYTHONPATH = "src"
 $env:Path += ";C:\Users\Levashenko\bin"
 uv run --python 3.12 -m ingestion.prepare --as-of 2026-09-29
+```
+
+To prepare only selected sources, pass their canonical names. `didok` remains an
+accepted alias for `service_points`.
+
+```powershell
+uv run --python 3.12 -m ingestion.prepare --datasets platforms service_points wifi
+uv run --python 3.12 -m ingestion.prepare --datasets wifi
+```
+
+Use `--refresh` only when you deliberately want to replace cached raw snapshots.
+`--raw-dir <folder>` moves the shared local cache for all selected sources, and
+`--output-dir <folder>` moves the three generated fact files.
+
+## Test your own query
+
+Once preparation has produced `data/platforms.fx`, `data/service_points.fx`, and
+`data/wifi.fx`, `query` loads those local files together with `ontology.fx`; it
+never fetches from SBB. Run the built-in demonstrations first if helpful:
+
+```powershell
 uv run --python 3.12 -m query
 ```
 
-The query command loads `ontology.fx` and the three generated fact files. It
-performs no API requests. See [reasoning and dataset integration](docs/reasoning-demo.md)
-for tests, specific queries, explanations, and the known source-data limitations.
+Then pass your own F-logic query with `--query`. A query starts with `?-`, uses
+variables prefixed by `?`, and ends with a period. For example:
+
+```powershell
+# List locally loaded stop points and their names.
+uv run --python 3.12 -m query --query '?- ?Station:StopPoint[designation -> ?Name].'
+
+# Find platforms at Bern whose ontology-derived length is greater than 320 m.
+uv run --python 3.12 -m query --query '?- ?Station:StopPoint[designation -> "Bern"] AND ?Platform:LongPlatform[atStopPoint -> ?Station; platformNumber -> ?Number; platformLength -> ?Length].'
+
+# Find stations in Ticino that have positive WiFi evidence.
+uv run --python 3.12 -m query --query '?- ?Station:StopPoint[inCanton -> canton_ti; hasWifi -> true; designation -> ?Name].'
+```
+
+The output shows the engine status and variable bindings. In this open-world
+ontology, `unknown` means the local facts do not establish the statement; it is
+not the same as `false`. Repeat `--query` to test several expressions in one
+run, or add `--explain 'platform_35292761:LongPlatform'` to inspect a derived
+fact's proof.
+
+See [reasoning and dataset integration](docs/reasoning-demo.md) for the field
+mappings, additional queries, tests, and known source-data limitations.

@@ -61,7 +61,7 @@ $env:Path += ";C:\Users\Levashenko\bin"
 uv run --python 3.12 -m ingestion.prepare --as-of 2026-09-29
 
 # Force new API snapshots, or prepare only the new adapters.
-uv run --python 3.12 -m ingestion.prepare --datasets didok wifi --refresh --as-of 2026-09-29
+uv run --python 3.12 -m ingestion.prepare --datasets service_points wifi --refresh --as-of 2026-09-29
 
 # Run all five demo queries entirely offline, using the existing ontology.
 uv run --python 3.12 -m query

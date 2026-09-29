@@ -59,6 +59,33 @@ class HarnessTests(unittest.TestCase):
             self.assertEqual(path.read_text(encoding="utf-8"), "world open.\nstation_8500123[hasWifi -> true].\n")
             self.assertEqual(len(list(Path(folder).iterdir())), 1)
 
+    def test_default_preparation_uses_one_raw_directory_for_all_initial_datasets(self):
+        with tempfile.TemporaryDirectory() as folder:
+            raw_dir = Path(folder) / "raw"
+            output_dir = Path(folder) / "facts"
+            with patch("ingestion.prepare.fetch_records", return_value=[]) as platforms, \
+                 patch("ingestion.prepare.fetch_dataset_records", return_value=[]) as generic, \
+                 redirect_stdout(io.StringIO()):
+                self.assertEqual(prepare.main(["--raw-dir", str(raw_dir), "--output-dir", str(output_dir)]), 0)
+            platforms.assert_called_once_with(raw_dir=raw_dir, limit=None, refresh=False)
+            self.assertEqual([call.args[0] for call in generic.call_args_list], [
+                "dienststellen-gemass-opentransportdataswiss", "wifistation",
+            ])
+            for call in generic.call_args_list:
+                self.assertEqual(call.kwargs["raw_dir"], raw_dir)
+                self.assertEqual(call.kwargs["limit"], None)
+                self.assertFalse(call.kwargs["refresh"])
+            self.assertEqual(sorted(path.name for path in output_dir.iterdir()), [
+                "platforms.fx", "service_points.fx", "wifi.fx",
+            ])
+
+    def test_service_points_is_canonical_dataset_name_and_didok_remains_an_alias(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with patch("ingestion.prepare.fetch_dataset_records", return_value=[]), redirect_stdout(io.StringIO()):
+                self.assertEqual(prepare.main(["--datasets", "service_points", "didok",
+                                               "--output-dir", folder]), 0)
+            self.assertEqual(sorted(path.name for path in Path(folder).iterdir()), ["service_points.fx"])
+
 
 if __name__ == "__main__":
     unittest.main()
