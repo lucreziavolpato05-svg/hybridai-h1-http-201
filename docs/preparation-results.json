@@ -1,0 +1,82 @@
+[
+  {
+    "dataset": "platforms",
+    "source_id": "perron",
+    "raw_rows": 1570,
+    "normalized_records": 1570,
+    "bytes": 1412434,
+    "preparation_seconds": 0.03828269999939948,
+    "refresh": false,
+    "as_of": "2026-09-29"
+  },
+  {
+    "dataset": "service_points",
+    "source_id": "dienststellen-gemass-opentransportdataswiss",
+    "raw_rows": 1773,
+    "normalized_records": 1773,
+    "bytes": 354375,
+    "preparation_seconds": 0.030994600034318864,
+    "refresh": false,
+    "as_of": "2026-09-29"
+  },
+  {
+    "dataset": "wifi",
+    "source_id": "wifistation",
+    "raw_rows": 79,
+    "normalized_records": 73,
+    "bytes": 2568,
+    "preparation_seconds": 0.002567299990914762,
+    "refresh": false,
+    "as_of": "2026-09-29"
+  },
+  {
+    "dataset": "stop_events",
+    "source_id": "ist-daten-sbb",
+    "raw_rows": 69854,
+    "normalized_records": 69798,
+    "bytes": 39185623,
+    "preparation_seconds": 1.7926065999781713,
+    "refresh": false,
+    "as_of": "2026-09-29"
+  },
+  {
+    "dataset": "waiting_halls",
+    "source_id": "haltestelle-wartehallen",
+    "raw_rows": 939,
+    "normalized_records": 939,
+    "bytes": 173695,
+    "preparation_seconds": 0.04876879998482764,
+    "refresh": false,
+    "as_of": "2026-09-29"
+  },
+  {
+    "dataset": "passengers",
+    "source_id": "passagierfrequenz",
+    "raw_rows": 5724,
+    "normalized_records": 5724,
+    "bytes": 311042,
+    "preparation_seconds": 0.052600399940274656,
+    "refresh": false,
+    "as_of": "2026-09-29"
+  },
+  {
+    "dataset": "lines",
+    "source_id": "linie-mit-betriebspunkten",
+    "raw_rows": 1892,
+    "normalized_records": 923,
+    "bytes": 47865,
+    "preparation_seconds": 0.010304399998858571,
+    "refresh": false,
+    "as_of": "2026-09-29"
+  },
+  {
+    "dataset": "sector_boards",
+    "source_id": "sektortafel",
+    "raw_rows": 5364,
+    "normalized_records": 5364,
+    "bytes": 949464,
+    "preparation_seconds": 0.03539850004017353,
+    "refresh": false,
+    "as_of": "2026-09-29"
+  }
+]

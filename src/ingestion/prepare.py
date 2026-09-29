@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
+from time import perf_counter
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
@@ -91,8 +93,10 @@ def _fetch_lines(**options: object) -> list[dict]:
     return fetch_dataset_records(lines.DATASET_ID, order_by="linie, km, bpuic", **options)
 
 
-def _line_facts(raw: list[dict], _: date) -> tuple[str, int]:
-    records = lines.normalize_records(raw)
+def _line_facts(raw: list[dict], _: date, *, swiss_uics: set[str]) -> tuple[str, int]:
+    # Infrastructure operation points include junction markers and freight-only
+    # points. Only scoped passenger stops may become station Junctions.
+    records = [row for row in lines.normalize_records(raw) if row.uic in swiss_uics]
     return lines.emit_records(records), len(records)
 
 
@@ -117,7 +121,7 @@ DATASETS = {
                                    _fetch_stop_events, _stop_event_facts, True),
     "waiting_halls": PreparedDataset(waiting_halls.DATASET_ID, "waiting_halls.fx", _fetch_waiting_halls, _waiting_hall_facts),
     "passengers": PreparedDataset(passengers.DATASET_ID, "passengers.fx", _fetch_passengers, _passenger_facts),
-    "lines": PreparedDataset(lines.DATASET_ID, "lines.fx", _fetch_lines, _line_facts),
+    "lines": PreparedDataset(lines.DATASET_ID, "lines.fx", _fetch_lines, _line_facts, True),
     "sector_boards": PreparedDataset(sector_boards.DATASET_ID, "sector_boards.fx", _fetch_sector_boards, _sector_board_facts),
 }
 DATASET_ALIASES = {"didok": "service_points"}
@@ -142,6 +146,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_RAW_DIR.parent)
     parser.add_argument("--limit", type=non_negative, help="raw sample limit per dataset (default: all)")
     parser.add_argument("--refresh", action="store_true")
+    parser.add_argument("--report", type=Path, help="write preparation counts, sizes and timings as JSON")
     parser.add_argument("--as-of", type=date.fromisoformat, default=date.today(),
                         help="DiDok validity date, YYYY-MM-DD (default: today)")
     args = parser.parse_args(argv)
@@ -149,7 +154,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         args.output_dir.mkdir(parents=True, exist_ok=True)
         swiss_uics = None
+        report = []
         for dataset in dict.fromkeys(args.datasets):
+            started = perf_counter()
             definition = DATASETS[dataset]
             raw = definition.fetch(**options)
             context = {}
@@ -161,7 +168,14 @@ def main(argv: list[str] | None = None) -> int:
             source, normalized_count = definition.transform(raw, args.as_of, **context)
             output = args.output_dir / definition.filename
             output.write_text("world open.\n" + source, encoding="utf-8")
-            print(f"{dataset}: {len(raw)} raw rows -> {normalized_count} normalized records -> {output}")
+            elapsed = perf_counter() - started
+            report.append(dict(dataset=dataset, source_id=definition.source_id, raw_rows=len(raw),
+                               normalized_records=normalized_count, bytes=output.stat().st_size,
+                               preparation_seconds=elapsed, refresh=args.refresh, as_of=str(args.as_of)))
+            print(f"{dataset}: {len(raw)} raw rows -> {normalized_count} normalized records -> {output} ({elapsed:.3f}s)")
+        if args.report:
+            args.report.parent.mkdir(parents=True, exist_ok=True)
+            args.report.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     except (OSError, ValueError, RuntimeError) as exc:
         print(f"Preparation failed: {exc}", file=sys.stderr)
         return 1

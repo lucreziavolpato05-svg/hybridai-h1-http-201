@@ -4,8 +4,10 @@ The canonical ontology is [ontology.fx](../ontology.fx). It implements the
 classes and rules from the handwritten ontology and is intentionally open-world.
 The API layer must emit the base facts below. Rules should not be used to guess
 missing source records. DiDok, WiFi, and platform adapters now share the
-`station_<full UIC/BPUIC>` identity. See [reasoning-demo.md](reasoning-demo.md)
-for current coverage, commands, tests, and observed source-data conflicts.
+`station_<full UIC/BPUIC>` identity. All eight adapters are now integrated. See
+[verification.md](verification.md) for current coverage and validation, and
+[README](../README.md) for current commands. DiDok owns canonical designation;
+the legacy name alias is opt-in, and the source-name conflict is resolved.
 
 ## Dataset-to-fact mapping
 
@@ -37,7 +39,7 @@ waitinghall_1:WaitingHall.
 waitinghall_1[atStopPoint -> station_8503000].
 waitinghall_1[status -> "BESTEHEND"].
 
-station_8509000[observedFrequency(2024) -> 28500.0].
+station_8509000[observedFrequency("2024") -> 28500.0].
 line_900:Line.
 line_900[label -> "900"].
 station_8509000[servedByLine -> line_900].
@@ -51,10 +53,9 @@ event_1[nextStop -> event_2].
 ```
 
 Object references must be unquoted. Quote names, categories, statuses, and
-platform numbers. Passenger counts, years in `observedFrequency(year)`, and
-platform lengths must be numeric values. Use `observedFrequency(2024)` consistently
-for future ingestion. Integration tests confirm string arguments also work in
-the installed FrameX engine, but `2024` and `"2024"` are distinct values and
+platform numbers. Passenger counts and platform lengths are numeric values.
+The final acceptance contract uses string years: `observedFrequency("2024")`.
+Integration tests confirm that `2024` and `"2024"` are distinct values and
 must match the query's type. Use full UIC/BPUIC for `station_...`; do not key joins
 on display names or short DiDok numbers.
 

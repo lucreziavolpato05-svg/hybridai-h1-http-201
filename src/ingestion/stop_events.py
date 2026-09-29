@@ -76,6 +76,7 @@ def normalize_record(record: dict) -> StopEvent:
 def normalize_records(records: Iterable[dict]) -> list[StopEvent]:
     groups: dict[tuple[str, str, str], dict[str, StopEvent]] = defaultdict(dict)
     unsafe = set()
+    conflicting = set()
     errors: list[str] = []
     for index, record in enumerate(records):
         if (text(record.get("produkt_id")) or "").casefold() != "zug":
@@ -85,8 +86,12 @@ def normalize_records(records: Iterable[dict]) -> list[StopEvent]:
         key = journey_key(record)
         try:
             event = normalize_record(record)
+            if event.identifier in conflicting:
+                continue
             previous = groups[key].get(event.identifier)
             if previous is not None and previous != event:
+                conflicting.add(event.identifier)
+                del groups[key][event.identifier]
                 raise ValueError("Conflicting duplicate event")
             groups[key][event.identifier] = event
         except ValueError as exc:

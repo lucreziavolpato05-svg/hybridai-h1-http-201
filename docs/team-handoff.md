@@ -1,5 +1,9 @@
 # Team Takeover Checklist
 
+> This is the earlier integration checklist. For the completed eight-dataset
+> system, current tests, proof-budget diagnosis and next steps, read the root
+> [AGENTS.md](../AGENTS.md) and [verification.md](verification.md) first.
+
 Read this before extending the API ingestion or pushing the next integration.
 
 ## Current state

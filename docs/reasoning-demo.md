@@ -1,5 +1,13 @@
 # Offline reasoning over platforms, DiDok, and WiFi
 
+> Historical three-source integration notes. The completed eight-source system,
+> commands and verified results are documented in [README](../README.md) and
+> [verification.md](verification.md). `main.py` now delegates to the real query
+> application; all eight files are loaded by default. DiDok owns designation,
+> resolving the spelling conflict described in these older notes. Current full
+> validation has zero violations and 68 unknown required-field checks. Train
+> export support and the remaining adapters are implemented.
+
 ## Architecture and scope
 
 ```text

@@ -59,7 +59,7 @@ SBB API -> download/cache -> dataset-specific normalization -> BASE F-logic fact
 - Do not hardcode expected station answers. Named stations in demo queries are
   query inputs; results must come from facts and rules.
 - Method arguments are typed: `2025` and `"2025"` are different values. Both work
-  in the tested FrameX binary; prefer numeric years for future frequency data.
+  in the tested FrameX binary; use string years in the final acceptance contract, e.g. `observedFrequency("2024")`.
 
 ## Code map
 
@@ -70,11 +70,15 @@ SBB API -> download/cache -> dataset-specific normalization -> BASE F-logic fact
 | `src/ingestion/ingest.py` | Platform CLI and incremental `ingest_platforms(client, ...)` using `client.add` |
 | `src/ingestion/didok.py` | Swiss passenger-rail DiDok normalization and base-fact emission |
 | `src/ingestion/wifi.py` | Positive WiFi inventory evidence; warns/skips missing BPUIC |
+| `src/ingestion/stop_events.py` | Complete dated journeys; chronological base edges; conservative handling of unsafe calls |
+| `src/ingestion/waiting_halls.py`, `passengers.py`, `lines.py`, `sector_boards.py` | Explicit remaining source adapters; string year DTV; source line-number labels |
+| `src/acceptance.py` | All 18 official queries, semantic checks, four real explanations, performance/validation JSON |
+| `src/package_submission.py` | Allowlisted, integrity-checked offline ZIP |
 | `src/ingestion/identity.py` | Full-UIC validation and shared station identifier |
-| `src/ingestion/prepare.py` | Prepare the three datasets as local fact files |
+| `src/ingestion/prepare.py` | Prepare eight datasets; scope train/line station links through DiDok; optional JSON timing report |
 | `src/query.py` | Offline combined loading, demos, arbitrary queries, explanations, validation summary |
 | `src/framex.py` | Canonical local subprocess client; do not install the unrelated PyPI `framex` package |
-| `src/main.py` | Small existing example; keep it free of large dataset-specific orchestration |
+| `src/main.py` | Thin entry point delegating to the real SBB query application |
 | `tests/test_*.py` | Offline unit tests, no engine required |
 | `tests/integration/test_ontology.py` | Separate synthetic offline tests requiring the real engine |
 
@@ -109,58 +113,78 @@ uv run --python 3.12 -m query --explain 'platform_35292761:LongPlatform'
 git diff --check
 ```
 
-Preparation accepts `--datasets` (`platforms`, `service_points`, and `wifi`;
-`didok` remains an alias), `--limit`, `--refresh`, and `--as-of YYYY-MM-DD`.
+Preparation accepts `--datasets` (`platforms`, `service_points`, `wifi`,
+`stop_events`, `waiting_halls`, `passengers`, `lines`, `sector_boards`; `didok`
+remains an alias), `--limit` (not for trains), `--refresh`, `--report`, and
+`--as-of YYYY-MM-DD`.
 The default validity date is today; `--as-of` filters DiDok validity, not the API's
 historical state. A small sample may omit named demo stations. The query CLI
 accepts `--binary`, `--ontology`, `--facts`, and repeatable `--query`/`--demo`/
-`--explain`. The example explanation ID is from the inspected snapshot.
+`--explain`, plus `--stats`, `--max-proofs` (default 1,000,000), and
+`--request-timeout` (default 180 seconds). `FRAMEX_BINARY` is honored.
+The example explanation ID is from the inspected snapshot. Run `uv run -m
+acceptance` for the complete regression and `uv run -m package_submission` for
+an offline ZIP.
 
 Raw snapshots live under `data/raw/`. Generated outputs are `data/platforms.fx`,
-`data/service_points.fx`, and `data/wifi.fx`. These files are ignored by Git.
+`data/service_points.fx`, `data/wifi.fx`, and five matching adapter outputs.
+Ignore rules cover generated files; already-tracked teammate snapshots are
+retained. The ZIP deliberately includes all eight `.fx` files for offline use.
 If the sandbox blocks network or temporary test-directory access, request the
 required execution permission; do not weaken tests or bypass restrictions.
 
 ## Current progress
 
-Last updated: **2026-09-29**. Counts below are observations from the inspected
-snapshots and previous verification, not expected constants for future tests.
+Last updated: **2026-09-29**. Full evidence is in
+[verification.md](docs/verification.md), [acceptance-results.json](docs/acceptance-results.json),
+and [scalability.md](docs/scalability.md). Counts are snapshot observations.
 
-- Implemented: platforms (`perron`), scoped Swiss passenger-rail DiDok
-  (`dienststellen-gemass-opentransportdataswiss`), and WiFi (`wifistation`).
-- Verified snapshot: 1,570 platforms, 1,773 DiDok points, 73 joinable WiFi stations
-  out of 79 inventory rows. Six missing-BPUIC rows are reported and skipped.
-- Ontology fixes: cancelled intermediate events can be skipped in non-stop
-  chains; IC, IR, EC, ICE, TGV, NJ, RJX category seeds are present.
-- Last code verification: **42 unit tests and 14 real-engine integration tests
-  passed** on 2026-09-29.
-  Tests cover joins, thresholds, cancellation, missing values, positive-only
-  WiFi, open-world negation, and rule explanations.
-- Live query coverage: Chur WiFi, Zürich HB platforms/lengths, Bern long platforms,
-  Ticino/WiFi joins, and train/tram Interchange. Open-world WiFi behavior is tested.
-- Remaining adapters: waiting rooms, sector boards, dated train-stop events,
-  passenger frequencies, line operation points, and route identity mappings.
-- Recommended next feature: dated StopEvent ingestion to unlock actual categories,
-  TGV service, LongDistanceStation and non-stop destinations. Keep event identity
-  and `nextStop` ordering scoped to one journey and operating date.
+- Eight adapters are implemented and prepared from cache: 1,570 platforms,
+  1,773 DiDok stops, 73 WiFi stations, 69,798 train events, 939 waiting halls,
+  5,724 DTV observations, 923 scoped line memberships and 5,364 sector boards.
+- Trains cover **2026-09-28**: 5,781 journeys, 63,930 chronological links,
+  68,416 actual stops. No cross-journey or multiple-successor edges were found.
+- The proof-limit issue was reproduced during bulk inference. Base-only and
+  single-rule diagnostics pass; the full world reaches a fixed point with a
+  finite configurable 1,000,000-proof budget. Transport remains unchanged.
+- Full world: **860,536 facts**, **152,575 derived facts**, **277,896 rule firings**,
+  **13 rounds**. Acceptance load **50.97 s**; query evaluations **0.42-6.18 ms**.
+- Final verification in this session: **67 unit tests and 17 engine integration
+  tests passed**. `uv sync`, main/demo, arbitrary query, stats, explanation,
+  complete validation and acceptance all ran successfully.
+- Official coverage: **18/18 supported; 13 PASS, 5 LIVE-DATA DIFFERENCE, zero
+  FAIL / NOT IMPLEMENTED**. Four differences are train-source date changes.
+  Graubunden waiting halls differ because Landquart's halls are planned for
+  demolition rather than BESTEHEND. No historical answers were inserted.
+- Four actual engine explanations trace LongPlatform, Junction,
+  LongDistanceStation and nonStopTo to rules and asserted facts.
+- Source-name conflicts are resolved: DiDok owns designation; only explicitly
+  typed LegacyNamedStation fixtures derive it from legacy names.
+- Line ingestion scopes operation points through DiDok, preventing freight or
+  infrastructure markers from becoming station Junctions.
+- Next work: fill the README model declaration before submission. For Hackathon 2,
+  prefer versioned snapshot manifests and explicit temporal provenance.
 
 ### Known issues and limits
 
-- **Live validation is not clean.** Platform and DiDok station spellings differ,
-  including accents. The existing name-to-designation compatibility rule yields
-  298 functional-designation violation facts in the inspected snapshot; seven
-  schema checks are unresolved. Do not silently remove names or constraints to
-  hide this. A coordinated authoritative-name policy is still needed.
-- `query --validate` reports diagnostics; its exit code is not a guarantee of
-  clean validation. Use `client.validate()` for the complete report.
-- Live StopEvent data is not yet ingested. Non-stop/category/long-distance rules
-  are covered with synthetic facts. The live negative-WiFi demo also lacks
-  long-distance membership evidence; the synthetic test checks a known member.
-- Generic download supports the records endpoint's 10,000-row window and fails
-  rather than silently truncating larger results. The scoped DiDok filter fits;
-  the full unfiltered dataset would require export support or a narrower scope.
-- `client.add` is additive; refreshing a cache does not retract old session facts.
-  Use a fresh combined session when replacing snapshots.
+- **Zero reported violations**, but **68 unknown required-field checks** remain:
+  seven missing platform lengths and 61 canonical station names. Seven constraint
+  bodies are UNKNOWN in open-world validation, not certified globally consistent.
+- Six WiFi rows lack BPUIC. 56 train rows have invalid schedules; links for 10
+  uncertain journeys are withheld, so missing calls cannot create false legs.
+  Missing flags remain unknown; foreign calls remain chain barriers.
+- Train order is scheduled source-local order, not a real-time routing guarantee.
+  Passenger years are strings (`"2024"`); numeric arguments are different terms.
+- `query --validate` now exits nonzero for reported violations. Full validation
+  needs more than the client's default 8 MiB response cap; application sessions
+  use 64 MiB. Full load needs about a minute and roughly 2.25 GB observed engine
+  working set; do not assume the budget fits unlimited historical data.
+- Bulk source exports support full trains beyond 10,000 rows; ordinary record
+  pagination still refuses silent truncation. Cached preparation was measured;
+  cold network download duration was not remeasured in the final session.
+- `client.add` is additive. Replace snapshots in a fresh combined session.
+- Exact coding-model name is not verified. Preserve
+  `MODEL_NAME_TO_FILL_IN_BEFORE_SUBMISSION` until the team supplies it.
 
 ## Required end-of-run update
 
@@ -232,3 +256,22 @@ the ingestion app. This is a required handoff procedure, not a background hook.
   API snapshot selector.
 - Open: the existing live source-name validation conflicts and remaining adapters.
   Next feature remains dated StopEvent ingestion.
+
+### 2026-09-29 - Full Hackathon 1 finalization and scalability verification
+
+- Inspected clean HEAD `80433e5`, repository code/docs/tests and all eight caches.
+  Baseline was 53 unit tests with one obsolete three-source orchestration failure,
+  plus 15 passing engine tests. Reproduced the default proof-limit failure and
+  used base-only/rule-ablation diagnostics before selecting a bounded budget.
+- Added configurable full-world runtime limits, FRAMEX_BINARY support, validation
+  failure exit status, dataset timings, 18-query acceptance, proof checks and ZIP
+  packaging. Fixed arbitrary conflicting-event selection and scoped infrastructure
+  line points through DiDok. Preserved all ontology rules and the platform API.
+- Final checks: 67 unit and 17 engine integration tests pass; setup/main/query/
+  explanation/stats/validation work. Full acceptance is 13 PASS + 5 live-data
+  differences, no failures, zero validation violations. Required missing fields
+  remain visible as 68 UNKNOWN checks. Whitespace validation passed.
+- Updated README and historical handoff pointers; generated reproducible JSON
+  evidence. No commits, pushes or resets. Model declaration remains manual;
+  recreate the clean ZIP after filling it. Next: snapshot/version provenance for
+  Hackathon 2. The final archive includes local generated facts, not raw caches.

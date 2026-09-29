@@ -1,5 +1,9 @@
 # SBB platform ingestion
 
+This document covers the preserved platform-only API. For all eight datasets,
+bulk loading, official queries and current verification, use the root
+[README](../README.md) and [verification.md](verification.md).
+
 ## Source and modules
 
 The first dataset is [Stop: platform length (body)](https://data.sbb.ch/explore/dataset/perron/),

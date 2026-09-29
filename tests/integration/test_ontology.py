@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from framex import Client
-from ingestion import didok, wifi
+from ingestion import didok, lines, passengers, sector_boards, stop_events, waiting_halls, wifi
 from ingestion.emiter import emit_records as emit_platforms
 from ingestion.normalizer import normalize_records as normalize_platforms
 
@@ -180,6 +180,50 @@ class OntologyTests(unittest.TestCase):
         ''')
         self.assert_status("station_actual:LongDistanceStation")
         self.assert_status("station_cancelled:LongDistanceStation", "unknown")
+
+    def test_remaining_adapters_join_with_typed_years_and_derive(self):
+        uic = 8500123
+        source = f'station_{uic}:StopPoint[designation -> "Fixture"; hasWifi -> true].\n'
+        source += waiting_halls.emit_records(waiting_halls.normalize_records([
+            {"bpuic": uic, "status": "BESTEHEND"}]))
+        source += lines.emit_records(lines.normalize_records([
+            {"bpuic": uic, "linie": 900}, {"bpuic": uic, "linie": 100}]))
+        source += passengers.emit_records(passengers.normalize_records([
+            {"uic": float(uic), "jahr_annee_anno": "2025", "dtv_tjm_tgm": 20001},
+            {"uic": float(uic), "jahr_annee_anno": "2018", "dtv_tjm_tgm": 20000}]))
+        source += sector_boards.emit_records(sector_boards.normalize_records([
+            {"bpuic": str(uic), "fid": 123, "kundengleisnummer": "3", "sektor_vorderseite": "A"}]))
+        self.client.add(source=source)
+        for goal in ('station_8500123:Junction', 'station_8500123:WellEquippedStation',
+                     'station_8500123[busyIn("2025") -> true]',
+                     'sectorboard_123[trackNumber -> "3"; sectorFront -> "A"]'):
+            self.assert_status(goal)
+        self.assert_status('station_8500123[busyIn("2018") -> true]', "unknown")
+        self.assert_status('station_8500123[busyIn(2025) -> true]', "unknown")
+        explanation = self.client.explain("station_8500123:Junction")
+        self.assertIn("Derived by rule", explanation)
+        self.assertIn("servedByLine", explanation)
+        self.assertEqual(self.client.validate()["violations"], [])
+
+    def test_emitted_journeys_skip_cancelled_and_passing_without_cross_links(self):
+        def row(uic, minute, **extra):
+            return dict(betriebstag="2026-09-28", betreiber_id="85:11", fahrt_bezeichner="trip",
+                        produkt_id="Zug", bpuic=uic, verkehrsmittel_text="IC", faellt_aus_tf=False,
+                        durchfahrt_tf=False, ankunftszeit=f"2026-09-28T10:{minute:02}:00", **extra)
+        raw = [row(8500123, 0), row(8500124, 5), row(8500125, 10), row(8500126, 15), row(8500127, 20)]
+        raw[1]["faellt_aus_tf"] = True
+        raw[2]["durchfahrt_tf"] = True
+        raw[4]["fahrt_bezeichner"] = "other-trip"
+        events = stop_events.normalize_records(reversed(raw))
+        self.client.add(source=stop_events.emit_records(events, swiss_uics={str(x["bpuic"]) for x in raw}))
+        self.assert_status("station_8500123[nonStopTo -> station_8500126]")
+        for target in (8500124, 8500125, 8500127):
+            self.assert_status(f"station_8500123[nonStopTo -> station_{target}]", "unknown")
+        for fact, evidence in (("station_8500123[nonStopTo -> station_8500126]", "nextStop"),
+                               ("station_8500123:LongDistanceStation", "category")):
+            explanation = self.client.explain(fact)
+            self.assertIn("Derived by rule", explanation)
+            self.assertIn(evidence, explanation)
 
 
 if __name__ == "__main__":

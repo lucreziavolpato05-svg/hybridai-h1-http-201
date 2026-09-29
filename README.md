@@ -18,8 +18,9 @@ application code, derives facts such as long platforms, train/tram interchanges,
 and WiFi-equipped stations. Once the local fact files have been prepared, all
 queries run offline against the local ontology and facts.
 
-The initial sources are platform lengths, DiDok service points, and Wifi@Station.
-Their raw API snapshots are cached locally but deliberately excluded from Git.
+Eight sources are integrated: platform lengths, DiDok service points, WiFi, train
+events, waiting halls, passenger frequencies, line memberships, and sector boards.
+Raw API snapshots are cached locally and excluded from Git.
 
 ## Coding agents and models
 
@@ -27,190 +28,206 @@ The team used **Claude** and **Codex** as coding agents/models for implementatio
 and documentation support. Team members review the resulting code, ontology,
 tests, and documentation before accepting changes.
 
-## Reproduce the results
-
-From this project directory, install the Python environment and make the FrameX
-executable available on `PATH` (or set `FRAMEX_BINARY` to its path):
-
-```powershell
-uv sync
-$env:PYTHONPATH = "src"
-$env:FRAMEX_BINARY = "C:\path\to\framex.exe" # omit when framex is on PATH
-```
-
-Prepare the local facts once, then run the offline demos and test suites:
-
-```powershell
-# Downloads only missing raw snapshots; later runs reuse data/raw/.
-uv run --python 3.12 -m ingestion.prepare --as-of 2026-09-29
-
-# Loads ontology.fx plus the generated local fact files; makes no API requests.
-uv run --python 3.12 -m query
-
-# Verify the implementation.
-uv run --python 3.12 -m unittest discover -s tests -v
-uv run --python 3.12 -m unittest discover -s tests/integration -v
-```
-
-On macOS/Linux, use `PYTHONPATH=src` (and, if needed,
-`FRAMEX_BINARY=/path/to/framex`) before the corresponding command. The `--as-of`
-option filters DiDok validity; it does not recreate an earlier API snapshot. For
-identical live results, retain and reuse the same local `data/raw/` snapshots.
-
 ## AI-assisted development
 
 Tool: OpenAI Codex in VS Code.
 Model: **MODEL_NAME_TO_FILL_IN_BEFORE_SUBMISSION** (exact model not yet confirmed).
+The team's existing Claude/Codex declaration above is preserved. Fill in the exact
+model from the development tool before submission; do not infer it from a brand name.
 
-Before you start coding, your team needs to create a shared repository and set up the Python development environment. 🚀
-
-We will use: 
-- **GitHub** for collaboration and version control
-- **Python 3.12**
-- **uv** for Python, virtual environments and package management to ensure reproducibility
-
-> [!IMPORTANT]
-> Only one person per team should fork the repository. Everyone else will be invited to that fork.
-
-## Getting started
-### 1. Fork the Repository
-One team member should create the team's fork.
-
-1. Open the Hackathon repository on GitHub.
-2. Click Fork in the top-right corner.
-3. Select your GitHub account as the owner.
-4. Change the name from hybridai-h1-Template to hybridai-h1-GROUPNAME. (GROUPNAME is obviously the name of your group and not literaly GROUPNAME)
-5. Click Create fork.
-
-You now have a copy of the Hackathon repository under your GitHub account.
-
-This will be your team repository.
-
-### 2. Ivite your Team
-The person who created the fork should now give the rest of the team access.
-
-Open your fork on GitHub and go to:
-- Settings → Collaborators → Add people
-
-### 3. Install uv
-You can find a full uv installation guide in the official uv documentation: [docs.astral.sh](https://docs.astral.sh/uv/getting-started/installation/)
-
-Check that uv is installed with: 
-```bash
-uv --version
-```
-
-### 4. Set Up the Project
-1. Clone your teams Project - if not already done
-2. Initialize the project and set the python version to at least 3.12: 
-
-``` bash
-uv init --bare --python 3.12
-```
-
-3. Now run `uv sync` to create the virtual environment
-4. To run the main.py file using uv you can simply `uv run src/main.py` from the root directory of the repository.
-5. To install new python packages for example *numpy* do it with `uv add numpy`
-
-### 5. You are all set
-Your codebase is prepared for the hackahton! ⛏️
-
-## SBB to FrameX data flow
-
-Start with SBB's [Stop: platform length (body)](https://data.sbb.ch/explore/dataset/perron/)
-dataset (`perron`). The pipeline uses Python's standard library and the existing
-[FrameX client](https://unisg-ics-dsnlp.github.io/FrameX-Doc/python/client.html):
+## Architecture and symbolic reasoning
 
 ```text
-SBB API -> connector.py -> data/raw/perron/ (JSON cache)
-                       -> normalizer.py -> emiter.py -> ingest.py -> client.add
-                                                    -> data/platforms.fx
+SBB Open Data -> connector.py -> data/raw/<dataset>/ JSON snapshots
+              -> explicit dataset adapter -> data/<dataset>.fx BASE facts
+ontology.fx + all eight fact files -> one FrameX bulk load
+                                  -> DERIVED facts -> offline queries/explanations
 ```
 
-From the repository root in PowerShell, download, cache, and generate F-logic
-without starting the engine:
+`src/main.py` delegates to `query.py`. `src/framex.py` is the supplied local
+subprocess client. Python normalizes source data and orders event calls; FrameX
+performs all derived reasoning. After preparation, neither query nor acceptance
+execution needs an internet connection or an LLM.
+
+Base classes include StopPoint, Platform, SectorBoard, WaitingHall, Line, Journey,
+and StopEvent. Rules derive LongPlatform (>320 m), Junction (two distinct lines),
+Interchange (train + tram), busyIn(year) (>20,000 DTV), LongDistanceStation,
+WellEquippedStation, actual stops, non-stop links, one-change links, and BigHub.
+For example, a platform's `structuralLengthM` is a base fact; `LongPlatform` is
+inferred. A train's cancellation/pass-through flags and `nextStop` are base facts;
+`actuallyStops` and `nonStopTo` are inferred.
+
+The canonical ontology uses **`world open.`**: missing information is UNKNOWN.
+The WiFi inventory asserts only positive availability. No row never means
+`hasWifi -> false`; official question 1.7 correctly returns UNKNOWN.
+
+All adapters join on **`station_<full UIC/BPUIC>`**, never station names. DiDok
+owns canonical designations. Platform compatibility properties `station`, `number`,
+and `structuralLengthM` are preserved. Only explicitly typed `LegacyNamedStation`
+fixtures use the legacy name-to-designation alias, avoiding spelling conflicts.
+Passenger years are consistently **strings**, e.g. `observedFrequency("2024")`.
+
+## Datasets and snapshot
+
+Source links below identify the exact SBB dataset. Counts describe the cached
+snapshot, not constants enforced by ingestion.
+
+| Preparation name / source | Emitted evidence | Normalized records |
+| --- | --- | ---: |
+| `platforms` / [perron](https://data.sbb.ch/explore/dataset/perron/) | Physical platforms, structural length | 1,570 |
+| `service_points` / [DiDok](https://data.sbb.ch/explore/dataset/dienststellen-gemass-opentransportdataswiss/) | Active Swiss passenger rail stops, canton, modes, designation | 1,773 |
+| `wifi` / [wifistation](https://data.sbb.ch/explore/dataset/wifistation/) | Positive WiFi evidence | 73 |
+| `stop_events` / [ist-daten-sbb](https://data.sbb.ch/explore/dataset/ist-daten-sbb/) | Dated journeys, flags, categories, chronological nextStop | 69,798 |
+| `waiting_halls` / [haltestelle-wartehallen](https://data.sbb.ch/explore/dataset/haltestelle-wartehallen/) | Installation identity, station, exact status | 939 |
+| `passengers` / [passagierfrequenz](https://data.sbb.ch/explore/dataset/passagierfrequenz/) | DTV (`dtv_tjm_tgm`), including 2018/2024/2025 | 5,724 |
+| `lines` / [linie-mit-betriebspunkten](https://data.sbb.ch/explore/dataset/linie-mit-betriebspunkten/) | Station memberships and source line-number labels | 923 |
+| `sector_boards` / [sektortafel](https://data.sbb.ch/explore/dataset/sektortafel/) | Source FID, customer track number, front sector | 5,364 |
+
+Line memberships are filtered from 1,892 infrastructure operation points through
+the scoped DiDok station set, excluding freight/signal markers. The source's
+`linie` field supplies official numeric line labels (including 900); no separate
+route-network import is needed for the requested queries.
+
+Train facts cover **28 September 2026**, whereas the reference sheet uses
+27 September. `--as-of` controls DiDok validity only; it does not retrieve an
+old API snapshot. Reusing the generated facts/cache preserves these results.
+`--refresh` downloads the then-current data, so train answers can change daily.
+Full trains use the JSON export endpoint, with before/after count verification,
+rather than silently truncating at the records endpoint's 10,000-row ceiling.
+
+## Installation
+
+Use Python 3.12 and [uv](https://docs.astral.sh/uv/getting-started/installation/).
+Obtain the FrameX binary from your course/FrameX-Workbench distribution, following
+[FrameX's local setup instructions](https://unisg-ics-dsnlp.github.io/FrameX-Doc/python/installation.html).
+This project was verified with **FrameX 0.4.3**. The engine is separate from the
+Python environment; do not install the unrelated PyPI package named `framex`.
+
+Run every command below from the **repository root**, not `src/`:
 
 ```powershell
+uv sync
 $env:PYTHONPATH = "src"
-uv run --python 3.12 -m ingestion.ingest --dry-run
+$env:FRAMEX_BINARY = "C:\Users\Levashenko\bin\framex.exe" # use your own installation path
 ```
 
-Run the complete pipeline and query the loaded platforms:
+Alternatively put `framex` on PATH or pass `--binary <path>`. The query/main and
+acceptance commands honor `FRAMEX_BINARY`. On macOS/Linux use `export PYTHONPATH=src`
+and `export FRAMEX_BINARY=/path/to/framex`. No third-party Python dependencies
+are needed. Do not run `uv init` again in this existing project.
+
+## Prepare or reuse local facts
 
 ```powershell
-uv run --python 3.12 -m ingestion.ingest --binary "C:\Users\Levashenko\bin\framex.exe" --query '?- ?P:Platform.'
+# Reuse snapshots when present; download only missing sources.
+uv run -m ingestion.prepare --as-of 2026-09-29 --report docs/preparation-results.json
+
+# Prepare selected sources (didok remains an alias for service_points).
+uv run -m ingestion.prepare --datasets waiting_halls passengers lines sector_boards
+
+# Explicitly replace the previous-day train snapshot when desired.
+uv run -m ingestion.prepare --datasets stop_events --refresh
 ```
 
-You can omit `--binary` when `framex` is on PATH. On macOS/Linux, prefix the
-command with `PYTHONPATH=src` instead of setting `$env:PYTHONPATH`.
+All adapters share `data/raw/` but have separate request-specific caches. Use
+`--raw-dir` and `--output-dir` to change locations. `--limit` is available for
+other datasets; train preparation refuses it because partial journeys can create
+false non-stop links. The legacy platform-only `ingestion.ingest` command and
+its incremental `client.add` API remain available; see [data-pipeline.md](docs/data-pipeline.md).
+Refreshing cache does not retract facts from an existing engine session. Start
+a fresh combined query session after regenerating files.
 
-Use `--limit 10` for a sample and `--refresh` to replace the cached snapshot with
-fresh API data. By default the whole dataset is downloaded and subsequent runs
-reuse its cache. `data/raw/` snapshots and `data/platforms.fx` are ignored by Git.
-Platform length is **structural length**, not necessarily usable boarding length;
-rail-free access does not imply wheelchair accessibility.
+The submission ZIP includes the eight generated fact files for a reproducible,
+offline demo. Preparation is optional when those files already exist. Ignore
+rules prevent new generated artifacts being accidentally added; several fact
+files were already tracked by the team and are deliberately retained.
 
-See [the pipeline documentation](docs/data-pipeline.md) for field mappings,
-Python integration, cache behavior, and tests. `python -m ingestion.ingest`
-remains the platform-only entry point.
-
-## Combined ontology demo
-
-The shared preparation command downloads and caches the three initial sources:
-platforms (`perron`), service points (DiDok), and Wifi@Station. They all use one
-local raw-data root, `data/raw/`, with an isolated subdirectory per API dataset.
-The first command below downloads only snapshots missing from that cache and
-generates local fact files. Later runs reuse those snapshots, so they do not call
-the APIs. The raw snapshots and generated `.fx` files are intentionally ignored
-by Git; every developer runs this setup locally once.
+## Demo, queries, validation and explanations
 
 ```powershell
-$env:PYTHONPATH = "src"
-$env:Path += ";C:\Users\Levashenko\bin"
-uv run --python 3.12 -m ingestion.prepare --as-of 2026-09-29
+# Real SBB application; loads all eight datasets and runs the built-in demos.
+uv run src/main.py --stats
+
+# Submit an arbitrary query. Repeat --query to reuse one loaded session.
+uv run -m query --query '?- station_8509000[hasWifi -> true].'
+
+# Validate the full world and demonstrate open-world negation.
+uv run -m query --validate --stats --demo open-world-wifi
+
+# Show actual engine proofs from this snapshot.
+uv run -m query --explain 'platform_35292761:LongPlatform' --explain 'station_8509000:Junction' --explain 'station_8500010:LongDistanceStation' --explain 'station_8507000[nonStopTo -> station_8500218]'
 ```
 
-To prepare only selected sources, pass their canonical names. `didok` remains an
-accepted alias for `service_points`.
+Queries use `?-`, variables prefixed by `?`, and a final period. Objects are
+unquoted; literal names and years are double-quoted within the PowerShell string.
+`--facts <files...>` and `--ontology <file>` select alternative local inputs.
+The default full load takes about a minute on the tested workstation. Multiple
+queries in one invocation avoid repeated initialization.
+
+The application uses a measured `--max-proofs 1000000` budget and a configurable
+`--request-timeout 180` seconds per request. The 64 MiB response allowance permits
+full validation. See [scalability.md](docs/scalability.md) for the reproduced
+failure, ablation checks, memory observation, and rationale. No rules or
+constraints were removed to avoid the original proof-limit failure.
+
+## Tests and official acceptance
 
 ```powershell
-uv run --python 3.12 -m ingestion.prepare --datasets platforms service_points wifi
-uv run --python 3.12 -m ingestion.prepare --datasets wifi
+uv run -m unittest discover -s tests -v
+uv run -m unittest discover -s tests/integration -v
+uv run -m acceptance --output docs/acceptance-results.json
 ```
 
-Use `--refresh` only when you deliberately want to replace cached raw snapshots.
-`--raw-dir <folder>` moves the shared local cache for all selected sources, and
-`--output-dir <folder>` moves the three generated fact files.
+Unit tests are offline and need no engine. Integration tests use synthetic facts
+and require FrameX; without it they report SKIPPED, not passed. Acceptance uses
+the complete local snapshot and one engine session. It checks all 18 questions,
+source-event witnesses, same-journey chronological links, cancellation and
+pass-through behavior, typed years, validation, and four actual explanations.
+A runtime failure or semantic failure returns a nonzero exit code.
 
-## Test your own query
+Latest complete acceptance: **18/18 supported; 13 PASS, 5 LIVE-DATA DIFFERENCE,
+0 FAIL, 0 NOT IMPLEMENTED**. Four differences are train questions on a newer day.
+Question 1.3 returns Chur and Maienfeld: Landquart's source halls are
+`PROJEKTIERT ABBRUCH`, whereas `hasWaitingHall` requires `BESTEHEND`.
+Reference answers are comparison expectations only, never facts or returned
+answers. Questions without a supplied exact historical answer are checked for
+execution and current evidence; this is not a claim of exact historical equality.
 
-Once preparation has produced `data/platforms.fx`, `data/service_points.fx`, and
-`data/wifi.fx`, `query` loads those local files together with `ontology.fx`; it
-never fetches from SBB. Run the built-in demonstrations first if helpful:
+See [verification.md](docs/verification.md) for the 18-row coverage table,
+[acceptance-results.json](docs/acceptance-results.json) for every actual binding,
+proof and runtime check, and [preparation-results.json](docs/preparation-results.json)
+for per-dataset preparation timings and byte sizes.
+
+## Performance and limitations
+
+The final full world contains **860,536 facts** and 69,798 events. A measured
+acceptance load took **50.97 seconds**; the 18 question evaluations took roughly
+**0.4-6.2 ms each**. Generated facts occupy about **40.5 MiB**. Cached preparation
+takes about **2 seconds**, including 1.79 seconds for trains. These are local
+measurements; cold network download time was not remeasured. The diagnostic
+engine working set reached approximately 2.25 GB.
+
+- Zero reported validation violations does not certify completeness under an
+  open world. Missing required source values remain UNKNOWN and are reported.
+- Six WiFi records lack a joinable BPUIC; they are reported and omitted.
+- 56 train rows have invalid operating-day schedules. Links for 10 uncertain
+  journeys are withheld to prevent invented non-stop legs. Unknown flags never
+  become false. Foreign calls remain event-chain barriers.
+- Scheduled timestamps determine within-journey order. This is observed-service
+  reasoning, not a real-time journey planner or a guarantee of future service.
+- Platform length means structural length, not necessarily usable boarding length.
+- Waiting-hall source rows lack an installation ID; a deterministic content hash
+  identifies each row. Changing content can change that ID on refresh.
+- The exact coding-model declaration remains a manual pre-submission action.
+
+## Clean submission ZIP
 
 ```powershell
-uv run --python 3.12 -m query
+uv run -m package_submission
 ```
 
-Then pass your own F-logic query with `--query`. A query starts with `?-`, uses
-variables prefixed by `?`, and ends with a period. For example:
-
-```powershell
-# List locally loaded stop points and their names.
-uv run --python 3.12 -m query --query '?- ?Station:StopPoint[designation -> ?Name].'
-
-# Find platforms at Bern whose ontology-derived length is greater than 320 m.
-uv run --python 3.12 -m query --query '?- ?Station:StopPoint[designation -> "Bern"] AND ?Platform:LongPlatform[atStopPoint -> ?Station; platformNumber -> ?Number; platformLength -> ?Length].'
-
-# Find stations in Ticino that have positive WiFi evidence.
-uv run --python 3.12 -m query --query '?- ?Station:StopPoint[inCanton -> canton_ti; hasWifi -> true; designation -> ?Name].'
-```
-
-The output shows the engine status and variable bindings. In this open-world
-ontology, `unknown` means the local facts do not establish the statement; it is
-not the same as `false`. Repeat `--query` to test several expressions in one
-run, or add `--explain 'platform_35292761:LongPlatform'` to inspect a derived
-fact's proof.
-
-See [reasoning and dataset integration](docs/reasoning-demo.md) for the field
-mappings, additional queries, tests, and known source-data limitations.
+This creates and integrity-checks `dist/sbb-framex-submission.zip`, including code,
+tests, ontology, docs and the eight fact snapshots. It excludes `.git`, virtual
+environments, raw caches, bytecode, temporary files, and the separately installed
+engine. The working repository is preserved. Fill the model declaration before
+creating the final archive for submission.

@@ -81,6 +81,15 @@ class EventTests(unittest.TestCase):
         self.assertEqual(len(rows), 2)
         self.assertNotEqual(rows[0].identifier, rows[1].identifier)
 
+    def test_conflicting_duplicate_never_selects_arbitrary_stop_flags(self):
+        raw = [event(), event(faellt_aus_tf=True), event(), event(8500124, "10:10")]
+        with warnings.catch_warnings(record=True):
+            rows = normalize_records(raw)
+            reversed_rows = normalize_records(reversed(raw))
+        self.assertEqual(rows, reversed_rows)
+        self.assertEqual(len(rows), 1)
+        self.assertIsNone(rows[0].next_event)
+
 
 class ExportTests(unittest.TestCase):
     def test_full_export_and_offline_cache(self):

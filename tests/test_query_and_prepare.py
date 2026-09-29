@@ -3,6 +3,7 @@
 import io
 import tempfile
 import unittest
+from datetime import date
 from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -12,6 +13,13 @@ from query import load_knowledge, main, print_result, validation_summary
 
 
 class HarnessTests(unittest.TestCase):
+    def test_line_preparation_does_not_turn_freight_markers_into_station_junctions(self):
+        raw = [{"bpuic": uic, "linie": line} for uic in (8500123, 8515338) for line in (100, 900)]
+        source, count = prepare._line_facts(raw, date(2026, 9, 29), swiss_uics={"8500123"})
+        self.assertEqual(count, 2)
+        self.assertIn("station_8500123", source)
+        self.assertNotIn("station_8515338", source)
+
     def test_validation_summary_preserves_unknown_and_violation_counts(self):
         summary = validation_summary({
             "constraint_checks": [{"status": "unknown"}, {"status": "violated"}],
@@ -59,24 +67,31 @@ class HarnessTests(unittest.TestCase):
             self.assertEqual(path.read_text(encoding="utf-8"), "world open.\nstation_8500123[hasWifi -> true].\n")
             self.assertEqual(len(list(Path(folder).iterdir())), 1)
 
-    def test_default_preparation_uses_one_raw_directory_for_all_initial_datasets(self):
+    def test_default_preparation_uses_one_raw_directory_for_all_datasets(self):
         with tempfile.TemporaryDirectory() as folder:
             raw_dir = Path(folder) / "raw"
             output_dir = Path(folder) / "facts"
             with patch("ingestion.prepare.fetch_records", return_value=[]) as platforms, \
                  patch("ingestion.prepare.fetch_dataset_records", return_value=[]) as generic, \
+                 patch("ingestion.prepare.fetch_dataset_export", return_value=[]) as export, \
+                 patch("ingestion.connector.urlopen", side_effect=AssertionError("unit tests must be offline")), \
                  redirect_stdout(io.StringIO()):
                 self.assertEqual(prepare.main(["--raw-dir", str(raw_dir), "--output-dir", str(output_dir)]), 0)
             platforms.assert_called_once_with(raw_dir=raw_dir, limit=None, refresh=False)
             self.assertEqual([call.args[0] for call in generic.call_args_list], [
                 "dienststellen-gemass-opentransportdataswiss", "wifistation",
+                "dienststellen-gemass-opentransportdataswiss", "haltestelle-wartehallen",
+                "passagierfrequenz", "linie-mit-betriebspunkten", "sektortafel",
             ])
+            export.assert_called_once_with("ist-daten-sbb", where='produkt_id = "Zug"',
+                                           raw_dir=raw_dir, refresh=False)
             for call in generic.call_args_list:
                 self.assertEqual(call.kwargs["raw_dir"], raw_dir)
                 self.assertEqual(call.kwargs["limit"], None)
                 self.assertFalse(call.kwargs["refresh"])
             self.assertEqual(sorted(path.name for path in output_dir.iterdir()), [
-                "platforms.fx", "service_points.fx", "wifi.fx",
+                "lines.fx", "passengers.fx", "platforms.fx", "sector_boards.fx",
+                "service_points.fx", "stop_events.fx", "waiting_halls.fx", "wifi.fx",
             ])
 
     def test_service_points_is_canonical_dataset_name_and_didok_remains_an_alias(self):
