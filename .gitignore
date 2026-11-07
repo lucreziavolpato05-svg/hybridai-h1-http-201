@@ -1,24 +1,10 @@
-# Mac os ignore
-.DS_Store
-
-# uv specific python things to ignore
 .venv/
 __pycache__/
-*.pyc
-
-# Generated ingestion output
-data/generated_facts.fx
-data/platforms.fx
-data/service_points.fx
-data/wifi.fx
-data/stop_events.fx
-data/waiting_halls.fx
-data/passengers.fx
-data/lines.fx
-data/sector_boards.fx
-data/raw/*
-!data/raw/.gitkeep
-.uv-cache/
-dist/
-*.tmp
-*.log
+*.py[cod]
+.pytest_cache/
+# Generated logic bases: fx/, fx-demo/, fx-benchmarks/, any fx-* scratch build.
+fx/
+fx-*/
+.sbb-build-*/
+.DS_Store
+.*

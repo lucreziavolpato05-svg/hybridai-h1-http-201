@@ -1,6 +1,5 @@
-"""Submission entry point for the real offline SBB reasoning system."""
-
-from query import main
+"""Run the CLI with the existing `python src/main.py` command."""
+from cli.app import main
 
 
 if __name__ == "__main__":
