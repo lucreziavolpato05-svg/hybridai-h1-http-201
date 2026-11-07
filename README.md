@@ -24,6 +24,24 @@ the engine from the same commit into `.venv/bin/framex`, so no global install is
 needed. To move to a newer FrameX, change the `rev` in `pyproject.toml`
 (`[tool.uv.sources]`), then rerun both commands.
 
+### Windows
+
+Building the engine needs Rust with the MSVC toolchain and Visual Studio Build
+Tools ("Desktop development with C++"); run the install script from Git Bash.
+`cargo install` writes `.venv\bin\framex.exe`, next to (not inside)
+`.venv\Scripts`; the engine lookup checks both. For each new PowerShell session:
+
+```powershell
+cd C:\path\to\hybridai-team-h2
+. .\scripts\dev.ps1
+```
+
+The script leaves any other active venv, runs `uv sync --locked`, activates
+`.venv`, and puts the pinned engine first on `PATH` and in `FRAMEX_BINARY`, so
+an older global `framex` is never used. It warns if the engine was built from a
+different commit than `pyproject.toml` pins. `tzdata` is a dependency because
+Windows has no system time-zone database for `Europe/Zurich`.
+
 Initialization downloads source data and writes the knowledge base to `fx/`.
 The REPL loads it once and reuses the session. For a single query:
 

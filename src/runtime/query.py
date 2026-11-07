@@ -43,13 +43,28 @@ class QueryError(RuntimeError):
     pass
 
 
+def venv_engine() -> Path | None:
+    """The engine built by scripts/install-engine.sh, if present.
+
+    `cargo install --root .venv` always writes to `.venv/bin`. On POSIX that is
+    also the interpreter's directory; on Windows the interpreter lives in
+    `.venv/Scripts`, so `.venv/bin/framex.exe` is checked as well.
+    """
+    name = "framex.exe" if os.name == "nt" else "framex"
+    for folder in (Path(sys.executable).parent, Path(sys.prefix) / "bin"):
+        candidate = folder / name
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
 def binary() -> str:
     """Locate the engine: $FRAMEX_BINARY, then the project venv, then PATH."""
     override = os.environ.get("FRAMEX_BINARY")
     if override:
         return override
-    venv = Path(sys.executable).parent / "framex"
-    if venv.is_file() and os.access(venv, os.X_OK):
+    venv = venv_engine()
+    if venv is not None:
         return str(venv)
     found = shutil.which("framex")
     if not found:
