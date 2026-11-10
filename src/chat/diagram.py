@@ -14,11 +14,14 @@ and SBB customer service, with the numbered arrows of the sheet:
   9 hand-over                 knowledge base -> SBB customer service (P7)
 
 Each pattern has its own colour; passenger traffic is SBB red. The arrows and
-patterns used in the latest turn light up in their colour. The diagram only
+patterns used so far in the conversation light up in their colour; an arrow
+that fired more than once shows how often (e.g. "x3"), each chip its step count. The diagram only
 reads the trace: it never changes what the backend decided.
 """
 from __future__ import annotations
 
+import json
+import re
 from html import escape
 
 from .backend import ASKING, ENTITLED, FAILED, HANDED_ON, NOT_ENTITLED
@@ -29,6 +32,8 @@ PATTERNS = {
     "P5": "Rules Steer the Model",
     "P7": "Division by Competence",
 }
+# Patterns the backend may also report; their chip appears once they are used.
+EXTRA_PATTERNS = {"P12": "Model selects, rules write"}
 
 # edge id -> (path, number circle x, y, number, label, label side, colour kind)
 EDGES = {
@@ -62,58 +67,127 @@ NODES = {
 }
 
 
-def lit_from_trace(rows: list, status: str | None) -> tuple[set, set, set]:
-    """(lit edges, lit nodes, lit patterns) for the latest turn of the trace.
+_CODE = re.compile(r"^P(\d+)\b")
+KB_TOOLS = {"_station", "_measure", "_policy"}
+QUESTION_TOOLS = {"_turn", "_ask"}
+VERDICTS = {ENTITLED, NOT_ENTITLED}
+# Which nodes each arrow touches.
+ENDS = {"e1": ("passenger", "model"), "e2": ("model", "kb"), "e3": ("kb", "model"),
+        "e4": ("model", "passenger"), "e5": ("passenger", "model"), "e6": ("model", "kb"),
+        "e7": ("kb",), "e8": ("kb", "passenger"), "e9": ("kb", "service")}
 
-    rows: the UI's trace rows [turn, time, pattern, actor, action, data].
+
+def _code(pattern) -> str | None:
+    """'P7 Competence' -> 'P7'; '-' or '' -> None."""
+    m = _CODE.match(str(pattern or "").strip())
+    return f"P{int(m.group(1))}" if m else None
+
+
+def _data(raw) -> dict:
+    """The trace row's data column (JSON text from the UI, or a dict) as a dict."""
+    if isinstance(raw, dict):
+        return raw
+    try:
+        value = json.loads(raw) if isinstance(raw, str) and raw.strip().startswith("{") else {}
+    except ValueError:
+        value = {}
+    return value if isinstance(value, dict) else {}
+
+
+def trace_counts(rows: list, status: str | None) -> tuple[dict, set, dict]:
+    """(edge -> times fired, lit nodes, pattern code -> step count) for the whole conversation.
+
+    rows: the UI's trace rows [turn, time, pattern, actor, action, data]. Every count comes from
+    real rows; the final status only adds the arrow that ended the turn when no row shows it.
     """
-    if not rows:
-        return set(), set(), set()
-    turn = max(r[0] for r in rows)
-    edges, nodes, patterns = set(), set(), set()
-    for _, _, pattern, actor, _, _ in (r for r in rows if r[0] == turn):
-        code = (pattern or "").split(" ")[0]
-        if code in PATTERNS:
-            patterns.add(code)
+    edges: dict = {}
+    nodes, patterns = set(), {}
+
+    def fire(eid, n=1):
+        if n > 0:
+            edges[eid] = edges.get(eid, 0) + n
+
+    passenger_turns = []
+    for row in rows or []:
+        turn, _, pattern, actor, _, raw = (list(row) + [None] * 6)[:6]
+        code = _code(pattern)
+        if code:
+            patterns[code] = patterns.get(code, 0) + 1
+        data = _data(raw)
+        tool = data.get("tool") or ""
+        request = data.get("request") if isinstance(data.get("request"), dict) else {}
         if actor == "passenger":
-            edges.add("e1" if turn == 1 else "e5")
-            nodes.update({"passenger", "model"})
-        elif actor == "model":
+            nodes.add("passenger")
+            if turn not in passenger_turns:  # UI row and backend row of one message count once
+                passenger_turns.append(turn)
+            continue
+        if actor == "model":
             nodes.add("model")
         elif actor in ("rules", "knowledge base"):
             nodes.add("kb")
-        if code == "P1":
-            edges.add("e6")
+        if tool in QUESTION_TOOLS:
+            if "receipt" not in data:  # the question itself; the receipt row is the answer coming back
+                fire("e3")
+                fire("e4")
+        elif tool in KB_TOOLS:
+            fire("e7")
+        elif tool == "_say":
+            said = request.get("status")
+            if said in VERDICTS:
+                fire("e8")
+            elif said == HANDED_ON:
+                fire("e9")
         elif code == "P3":
-            edges.add("e2")
-        elif code == "P5":
-            edges.add("e3")
-        elif code == "P7":
-            edges.add("e7")
-    if status == ASKING:
-        edges.add("e4")
-        nodes.add("passenger")
-    elif status in (ENTITLED, NOT_ENTITLED):
-        edges.add("e8")
-        nodes.update({"kb", "passenger"})
+            fire("e2")
+        elif code == "P1" and tool in ("", "_llm"):
+            fire("e6")
+        elif not tool and code == "P5" and actor in ("rules", "model"):
+            fire("e3")
+        elif not tool and code == "P7" and actor != "host":
+            fire("e7")
+    if passenger_turns:
+        fire("e1")
+        fire("e5", len(passenger_turns) - 1)
+    # The status the turn ended with is real too: show its arrow if no row carried it.
+    if status == ASKING and "e4" not in edges:
+        fire("e4")
+    elif status in VERDICTS and "e8" not in edges:
+        fire("e8")
     elif status in (HANDED_ON, FAILED):
-        edges.update({"e7", "e9"})
-        nodes.update({"kb", "service"})
-        patterns.add("P7")
+        if "e9" not in edges:
+            fire("e9")
+        if "e7" not in edges:
+            fire("e7")
+    for eid in edges:
+        nodes.update(ENDS[eid])
     return edges, nodes, patterns
 
 
+def lit_from_trace(rows: list, status: str | None) -> tuple[set, set, set]:
+    """(lit edges, lit nodes, used patterns) for the conversation so far."""
+    edges, nodes, patterns = trace_counts(rows, status)
+    return set(edges), nodes, set(patterns)
+
+
+def _chip(code: str, name: str, count: int) -> str:
+    steps = f" · {count} step{'' if count == 1 else 's'}" if count else ""
+    return (f'<span class="chip k-{code.lower()}{" lit" if count else ""}" data-pattern="{code}">'
+            f'<i class="dot"></i><b>{code}</b> {escape(name)}{steps}</span>')
+
+
 def render_diagram(rows: list | None = None, status: str | None = None) -> str:
-    edges, nodes, patterns = lit_from_trace(rows or [], status)
+    edges, nodes, patterns = trace_counts(rows or [], status)
     parts = []
     for eid, (path, cx, cy, num, label, side, kind) in EDGES.items():
-        on = eid in edges
+        times = edges.get(eid, 0)
+        on = times > 0
         tx = cx + 14 if side == "start" else cx - 14
+        text = f"{label} ×{times}" if times > 1 else label
         parts.append(
-            f'<g class="edge k-{kind}{" lit" if on else ""}" data-edge="{eid}">'
+            f'<g class="edge k-{kind}{" lit" if on else ""}" data-edge="{eid}" data-count="{times}">'
             f'<path d="{path}" marker-end="url(#arrow-{kind if on else "idle"})"/>'
             f'<circle cx="{cx}" cy="{cy}" r="9"/><text class="num" x="{cx}" y="{cy + 4}">{num}</text>'
-            f'<text class="elabel" x="{tx}" y="{cy + 4}" text-anchor="{side}">{escape(label)}</text></g>')
+            f'<text class="elabel" x="{tx}" y="{cy + 4}" text-anchor="{side}">{escape(text)}</text></g>')
     for nid, (x, y, w, h, title, sub) in NODES.items():
         parts.append(
             f'<g class="node{" lit" if nid in nodes else ""}" data-node="{nid}">'
@@ -125,15 +199,18 @@ def render_diagram(rows: list | None = None, status: str | None = None) -> str:
         f'<marker id="arrow-{k}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" '
         f'orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ahead ah-{k}"/></marker>'
         for k in ("idle", "flow", "p1", "p3", "p5", "p7"))
-    chips = "".join(
-        f'<span class="chip k-{code.lower()}{" lit" if code in patterns else ""}" data-pattern="{code}">'
-        f'<i class="dot"></i><b>{code}</b> {escape(name)}</span>' for code, name in PATTERNS.items())
+    shown = dict(PATTERNS)
+    for code in sorted(patterns, key=lambda c: int(c[1:])):
+        shown.setdefault(code, EXTRA_PATTERNS.get(code, "pattern"))
+    chips = "".join(_chip(code, name, patterns.get(code, 0)) for code, name in shown.items())
     chips += '<span class="chip k-flow legend"><i class="dot"></i>passenger traffic</span>'
+    counter = (f'<div class="pattern-count" data-patterns-used="{len(patterns)}">'
+               f'Patterns used in this conversation: <b>{len(patterns)}</b></div>')
     return (
         '<div class="sbb-diagram">'
         '<svg viewBox="0 0 960 470" role="img" aria-label="System architecture: passenger, '
         f'language model, knowledge base, customer service"><defs>{markers}</defs>'
-        + "".join(parts) + f'</svg><div class="chips">{chips}</div></div>')
+        + "".join(parts) + f'</svg>{counter}<div class="chips">{chips}</div></div>')
 
 
 # Icons for the theme toggle and buttons, as CSS data URIs (white line icons).
@@ -198,8 +275,10 @@ CSS = """
 #form-card { border-radius: 16px !important; border: 1px solid var(--dg-stroke, #E1E1E4) !important;
   padding: 12px 14px !important; box-shadow: var(--card-shadow) !important; }
 #form-label p { margin: 0 0 6px; font-weight: 600; }
-#form-choice .wrap { gap: 8px; }
-#form-choice label { border-radius: 999px !important; padding: 7px 14px !important; cursor: pointer; }
+#form-choice { flex-wrap: wrap; gap: 8px; }
+#form-choice button { border-radius: 999px !important; padding: 7px 14px !important; min-width: 0 !important;
+  flex: none !important; }
+.status-pill.working { opacity: .8; }
 #form-send { border-radius: 12px !important; min-width: 110px; }
 /* ---- cards ---- */
 .card { border-radius: 16px !important; box-shadow: var(--card-shadow) !important; }
@@ -257,6 +336,9 @@ CSS = """
 .sbb-diagram .chip.lit b, .sbb-diagram .chip.lit { -webkit-text-fill-color: #FFFFFF; }
 .sbb-diagram .chip.lit .dot { background: #FFFFFF !important; }
 .sbb-diagram .chip.legend { border-style: dashed; }
+.sbb-diagram .chip.lit.k-p12 { color: var(--dg-label); }
+.sbb-diagram .pattern-count { margin-top: 8px; font: 13px Helvetica, Arial, sans-serif; color: var(--dg-sub); }
+.sbb-diagram .pattern-count b { color: var(--dg-text); }
 @keyframes dg-pulse { 50% { box-shadow: 0 0 3px currentColor; } }
 @media (prefers-reduced-motion: reduce) {
   .sbb-diagram .edge.lit path, .sbb-diagram .chip.lit { animation: none; }
