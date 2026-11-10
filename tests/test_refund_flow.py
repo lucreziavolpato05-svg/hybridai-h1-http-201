@@ -682,3 +682,146 @@ def test_p3_phrases_hand_on_reply(setup_bot):
     assert result["reply"] == polite
     phrase, decision = p3_steps(result)
     assert phrase["request"]["mustSay"] == "SBB" and decision["request"] == {"wording": "model"}
+
+
+# Structured form answers: the UI answers the rules' question without a model call.
+OPTIONS = [{"value": "08:09", "label": "08:09 IC 1 (arrives 09:09)"},
+           {"value": "08:39", "label": "08:39 IC 5 (arrives 09:39)"}]
+
+
+def sensed(result):
+    """P1 sensor calls (on a source); P3 phrasing calls carry mustSay."""
+    return [s for s in result["steps"] if s["tool"] == "_llm" and "mustSay" not in s["request"]]
+
+
+def answer_receipt(result):
+    return next(s for s in result["steps"]
+                if s["tool"] in {"_turn", "_ask"} and "answer" in s["receipt"])["receipt"]
+
+
+def test_price_form_answer_reaches_verdict_without_model_sensing(setup_bot):
+    bot, _, _, policy_calls = setup_bot()
+    first = bot.turn(None, MISSING_PRICE)
+    assert first["form"] == {"slot": "price", "kind": "number",
+                             "label": "What was your ticket price in CHF?", "min": 0}
+    final = bot.turn(first["state"], "40", form={"slot": "price", "value": 40})
+    assert_final(final, "entitled")
+    assert "CHF 10.00" in final["reply"]
+    assert policy_calls == [{"delayMinutes": 70, "price": 40}]
+    assert not sensed(final)
+    step = final["steps"][0]
+    assert (step["actor"], step["pattern"]) == ("passenger", "P5 Rules steer")
+    assert step["summary"] == "Form answer: price = 40 (no model call)"
+    receipt = answer_receipt(final)
+    assert receipt["form"] is True and receipt["formSlot"] == "price" and receipt["formValue"] == 40
+    assert receipt["answer"] == "40"
+
+
+def test_choice_form_answer_with_offered_departure_is_measured(setup_bot):
+    bot, kb, _, _ = setup_bot(ambiguous=True)
+    first = bot.turn(None, FULL)
+    form = first["form"]
+    assert form["slot"] == "choice" and form["kind"] == "choice"
+    assert form["options"] == OPTIONS
+    assert form["label"].startswith("Several trains match your journey.")
+    result = bot.turn(first["state"], OPTIONS[0]["label"], form={"slot": "choice", "value": "08:09"})
+    assert_final(result, "entitled")
+    assert not sensed(result)
+    assert [r for n, r in kb.calls if n == "_measure"][-1]["choice"] == "08:09"
+
+
+def test_choice_form_value_not_offered_asks_again(setup_bot):
+    bot, kb, _, policy_calls = setup_bot(ambiguous=True)
+    first = bot.turn(None, FULL)
+    second = bot.turn(first["state"], "09:09", form={"slot": "choice", "value": "09:09"})
+    assert second["status"] == "asking", second
+    assert second["steps"][-1]["tool"] == "_ask"
+    assert second["steps"][-1]["request"]["attempt"] == 2
+    assert second["form"]["options"] == OPTIONS
+    assert not sensed(second) and not policy_calls
+    assert not any(r.get("choice") == "09:09" for n, r in kb.calls if n == "_measure")
+    final = bot.turn(second["state"], OPTIONS[0]["label"], form={"slot": "choice", "value": "08:09"})
+    assert_final(final, "entitled")
+
+
+@pytest.mark.parametrize("form", [{"slot": "origin", "value": "Winterthur"},  # not the asked slot
+                                  {"slot": "price", "value": 0},
+                                  {"slot": "price", "value": -5},
+                                  {"slot": "price", "value": "forty"}])
+def test_invalid_or_mismatched_form_answer_is_asked_again(setup_bot, form):
+    bot, _, _, policy_calls = setup_bot()
+    first = bot.turn(None, MISSING_PRICE)
+    second = bot.turn(first["state"], str(form["value"]), form=form)
+    assert second["status"] == "asking", second
+    assert second["steps"][-1]["request"]["missing"] == "price"
+    assert second["steps"][-1]["request"]["attempt"] == 2
+    assert second["form"]["slot"] == "price"
+    assert not sensed(second) and not policy_calls
+    assert_final(bot.turn(second["state"], "40", form={"slot": "price", "value": 40}), "entitled")
+
+
+def test_all_slots_answered_by_forms(setup_bot):
+    bot, _, _, policy_calls = setup_bot()
+    current = bot.turn(None, "Can I get a refund?")
+    kinds = []
+    for slot, value in [("origin", "St. Gallen"), ("destination", "Zurich HB"),
+                        ("date", "2026-11-07"), ("time", "08:00"), ("price", 40)]:
+        assert current["status"] == "asking", current
+        assert current["form"]["slot"] == slot
+        kinds.append(current["form"]["kind"])
+        current = bot.turn(current["state"], str(value), form={"slot": slot, "value": value})
+        assert not sensed(current)
+    assert kinds == ["text", "text", "date", "time", "number"]
+    assert_final(current, "entitled")
+    assert "St. Gallen → Zürich HB" in current["reply"]  # the form name was grounded by _station
+    assert policy_calls == [{"delayMinutes": 70, "price": 40}]
+
+
+@pytest.mark.parametrize("slot,bad", [("date", "2026-11-7"), ("date", "2026-13-07"),
+                                      ("time", "8:00"), ("time", "24:00")])
+def test_malformed_date_or_time_form_is_asked_again(setup_bot, slot, bad):
+    bot, _, answers, _ = setup_bot()
+    text = "From St. Gallen to Zurich HB, ticket 40 CHF."
+    rows = [row("origin", "St. Gallen", "St. Gallen"), row("destination", "Zurich HB", "Zurich HB"),
+            row("price", 40, "40 CHF")]
+    if slot == "time":
+        text += " On 2026-11-07."
+        rows.append(row("date", "2026-11-07", "2026-11-07"))
+    answers[text] = rows
+    first = bot.turn(None, text)
+    assert first["form"]["slot"] == slot, first
+    second = bot.turn(first["state"], bad, form={"slot": slot, "value": bad})
+    assert second["status"] == "asking" and second["form"]["slot"] == slot, second
+    assert second["steps"][-1]["request"]["attempt"] == 2
+    good = {"date": "2026-11-07", "time": "08:00"}
+    current = bot.turn(second["state"], good[slot], form={"slot": slot, "value": good[slot]})
+    if slot == "date":
+        assert current["form"]["slot"] == "time"
+        current = bot.turn(current["state"], "08:00", form={"slot": "time", "value": "08:00"})
+    assert_final(current, "entitled")
+
+
+def test_free_text_answer_is_still_sensed(setup_bot):
+    bot, _, _, _ = setup_bot()
+    first = bot.turn(None, MISSING_PRICE)
+    final = bot.turn(first["state"], "40 CHF")
+    assert_final(final, "entitled")
+    assert len(sensed(final)) == 1
+    assert answer_receipt(final)["form"] is False
+    assert final["steps"][0]["summary"] == "40 CHF"
+
+
+def test_chat_backend_offers_choice_form_and_passes_form_answer(setup_bot):
+    from refund.chat_backend import RefundBackend
+    bot, kb, _, _ = setup_bot(ambiguous=True)
+    backend = RefundBackend(bot)
+    first = backend.respond(FULL, {})
+    assert first.status == "asking"
+    form = first.state["form"]
+    assert form["slot"] == "choice" and form["kind"] == "choice" and form["options"] == OPTIONS
+    kb.ambiguous = False  # the chosen train is then measured
+    final = backend.respond(OPTIONS[1]["label"],
+                            dict(first.state, formAnswer={"slot": "choice", "value": "08:39"}))
+    assert final.status == "entitled" and final.state == {}
+    assert [r for n, r in kb.calls if n == "_measure"][-1]["choice"] == "08:39"
+    assert any(s.action == "Form answer: choice = 08:39 (no model call)" for s in final.trace)
