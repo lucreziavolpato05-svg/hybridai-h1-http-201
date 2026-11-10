@@ -32,7 +32,7 @@ from runtime.query import binary
 
 MANIFEST = "manifest.json"
 SPINE_FILE = "60-spine.fx"
-META_PREFIXES = ("00-", "10-", "20-", "30-", "40-", "50-")
+META_PREFIXES = ("00-", "10-", "20-", "30-", "40-", "46-", "50-")
 
 
 class BuildError(RuntimeError):

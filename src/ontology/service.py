@@ -157,6 +157,12 @@ def map_service(data, scope: Scope, stamp: str) -> tuple[list[str], Resolution]:
                 value = emit.typed_literal(row.get(column), "String")
                 if value is not None:
                     lines.append(emit.fact(event, slot, value))
+            # The timetable as UTC seconds too: refund checks compare what was
+            # planned with what really ran (46-refunds.fx).
+            for column, slot in ((ARRIVAL, "scheduledArrivalEpoch"), (DEPARTURE, "scheduledDepartureEpoch")):
+                value = timestamp(row.get(column))
+                if value is not None:
+                    lines.append(emit.fact(event, slot, str(value)))
             for slot, value in actual.items():
                 lines.append(emit.fact(event, slot, str(value)))
             if active and ordered:

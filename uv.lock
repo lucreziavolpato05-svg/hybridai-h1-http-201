@@ -209,8 +209,8 @@ wheels = [
 
 [[package]]
 name = "framex"
-version = "0.4.4"
-source = { git = "https://gitlab.com/ds-unisg/framex-core?subdirectory=python&rev=48b5f077f542e0c44a18874871b82a899161128a#48b5f077f542e0c44a18874871b82a899161128a" }
+version = "0.5.0"
+source = { git = "https://gitlab.com/ds-unisg/framex-core?subdirectory=python&rev=977bb14db288caeb6bf1b253fdb8e25f83ada711#977bb14db288caeb6bf1b253fdb8e25f83ada711" }
 
 [[package]]
 name = "hybridai-h1"
@@ -229,7 +229,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "framex", git = "https://gitlab.com/ds-unisg/framex-core?subdirectory=python&rev=48b5f077f542e0c44a18874871b82a899161128a" },
+    { name = "framex", git = "https://gitlab.com/ds-unisg/framex-core?subdirectory=python&rev=977bb14db288caeb6bf1b253fdb8e25f83ada711" },
     { name = "requests", specifier = ">=2.34.2" },
     { name = "tzdata", specifier = ">=2024.1" },
 ]
