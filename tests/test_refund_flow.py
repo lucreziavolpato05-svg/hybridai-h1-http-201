@@ -22,10 +22,11 @@ MISSING_PRICE = "On 7 November I travelled from St. Gallen to Zurich HB at 8 o'c
 FULL = MISSING_PRICE + " My ticket cost 40 CHF."
 PHRASE_PROMPT = "Rewrite document politely for the passenger"
 TECHNICAL_REPLY = "A technical check could not be completed, so I am handing your case to SBB customer service."
-ECHO_40 = "Journey: St. Gallen → Zürich HB, 2026-11-07, planned departure 08:09, train IC 1, ticket CHF 40. "
-HEAD_25 = "Yes, you are eligible for a refund of CHF 10.00 (25% of your CHF 40.00 ticket). " + ECHO_40
-RULE_25 = (HEAD_25 + "Planned arrival 09:09, "
-           "actual arrival 10:19. Measured arrival delay: 70 minutes. ")
+ECHO_40 = ("Journey: St. Gallen → Zürich HB on 2026-11-07 with train IC 1 "
+           "(planned departure 08:09), ticket CHF 40. ")
+HEAD_25 = "Good news: yes, you are eligible for a refund of CHF 10.00 (25% of your CHF 40.00 ticket). " + ECHO_40
+RULE_25 = (HEAD_25 + "Your train was due in Zürich HB at 09:09 "
+           "but arrived at 10:19, 70 minutes late. ")
 
 
 def row(slot, value, quote):
@@ -171,7 +172,7 @@ def test_missing_price_then_25_percent(setup_bot):
     first = bot.turn(None, MISSING_PRICE)
     assert first["status"] == "asking", first
     assert not first["done"]
-    assert "price" in first["reply"].lower()
+    assert "ticket" in first["reply"].lower()
     assert not policy_calls
     assert first["steps"][-1]["request"]["missing"] == "price"
     assert first["steps"][-1]["tool"] == "_turn"
@@ -196,17 +197,17 @@ def test_missing_price_then_25_percent(setup_bot):
 
 def test_rules_steer_model_question_wording(setup_bot):
     bot, _, answers, _ = setup_bot()
-    answers["What was your ticket price in CHF?"] = {"utterance": "Please tell me your ticket price in CHF."}
+    answers["Thanks! What did you pay for your ticket, in CHF?"] = {"utterance": "Please tell me your ticket price in CHF."}
     first = bot.turn(None, MISSING_PRICE)
     assert first["reply"] == "Please tell me your ticket price in CHF."
-    assert first["steps"][-1]["request"]["question"] == "What was your ticket price in CHF?"
+    assert first["steps"][-1]["request"]["question"] == "Thanks! What did you pay for your ticket, in CHF?"
     assert_final(bot.turn(first["state"], "40 CHF"), "entitled")
 
 
 @pytest.mark.parametrize("failure", [RuntimeError("question model unavailable"), {}])
 def test_failed_turn_falls_back_to_rule_question(setup_bot, failure):
     bot, _, answers, _ = setup_bot()
-    question = "What was your ticket price in CHF?"
+    question = "Thanks! What did you pay for your ticket, in CHF?"
     answers[question] = failure
     first = bot.turn(None, MISSING_PRICE)
     assert first["status"] == "asking" and first["reply"] == question
@@ -216,7 +217,7 @@ def test_failed_turn_falls_back_to_rule_question(setup_bot, failure):
     assert_final(bot.turn(first["state"], "40 CHF"), "entitled")
 
 
-@pytest.mark.parametrize("delay,status,fragment", [(45, "notEntitled", "60 minute threshold"),
+@pytest.mark.parametrize("delay,status,fragment", [(45, "notEntitled", "refunds start at a delay of 60 minutes"),
                                                    (130, "entitled", "50%")])
 def test_policy_thresholds(setup_bot, delay, status, fragment):
     bot, _, _, _ = setup_bot(delay=delay)
@@ -233,7 +234,7 @@ def test_entitled_below_minimum_payout(setup_bot):
     result = bot.turn(None, text)
     assert_final(result, "entitled")
     assert "25%" in result["reply"] and "CHF 3.00" in result["reply"]
-    assert "not be paid out" in result["reply"] and "CHF 5" in result["reply"]
+    assert "not paid out" in result["reply"] and "CHF 5" in result["reply"]
 
 
 def test_out_of_scope_date(setup_bot):
@@ -285,7 +286,7 @@ def test_fabricated_quote_is_rejected(setup_bot):
     bot, _, answers, policy_calls = setup_bot()
     answers[MISSING_PRICE] = travel_rows() + [row("price", 4000, "4000 CHF")]
     first = bot.turn(None, MISSING_PRICE)
-    assert first["status"] == "asking" and "price" in first["reply"].lower()
+    assert first["status"] == "asking" and "ticket" in first["reply"].lower()
     sensor = next(step for step in first["steps"] if step["tool"] == "_llm")
     assert sensor["receipt"]["rows"][-1]["quoteFound"] is False
     assert not policy_calls
@@ -296,7 +297,7 @@ def test_price_number_must_occur_in_its_quote(setup_bot):
     bot, _, answers, policy_calls = setup_bot()
     answers[FULL] = travel_rows() + [row("price", 400, "40 CHF")]
     first = bot.turn(None, FULL)
-    assert first["status"] == "asking" and "price" in first["reply"].lower()
+    assert first["status"] == "asking" and "ticket" in first["reply"].lower()
     sensor = next(step for step in first["steps"] if step["tool"] == "_llm")
     assert sensor["receipt"]["rows"][-1]["quoteFound"] is True
     assert sensor["receipt"]["rows"][-1]["valueQuoted"] is False
@@ -672,8 +673,8 @@ def test_p3_cannot_move_or_change_the_rule_written_echo(setup_bot):
 
 def test_p3_phrases_hand_on_reply(setup_bot):
     bot, _, answers, _ = setup_bot(measure_status="noTrain")
-    rule = ("Please contact SBB customer service. No matching train was found in the dated "
-            "knowledge base. I cannot give a refund verdict for this case.")
+    rule = ("I'm sorry, I can't decide this case myself: No matching train was found in the dated "
+            "knowledge base. Please contact SBB customer service, they will help you further.")
     polite = ("We are sorry: no matching train was found in the dated knowledge base, so I cannot "
               "give a refund verdict. Please contact SBB customer service.")
     answers[rule] = {"text": polite}
@@ -703,7 +704,7 @@ def test_price_form_answer_reaches_verdict_without_model_sensing(setup_bot):
     bot, _, _, policy_calls = setup_bot()
     first = bot.turn(None, MISSING_PRICE)
     assert first["form"] == {"slot": "price", "kind": "number",
-                             "label": "What was your ticket price in CHF?", "min": 0}
+                             "label": "Thanks! What did you pay for your ticket, in CHF?", "min": 0}
     final = bot.turn(first["state"], "40", form={"slot": "price", "value": 40})
     assert_final(final, "entitled")
     assert "CHF 10.00" in final["reply"]
@@ -723,7 +724,7 @@ def test_choice_form_answer_with_offered_departure_is_measured(setup_bot):
     form = first["form"]
     assert form["slot"] == "choice" and form["kind"] == "choice"
     assert form["options"] == OPTIONS
-    assert form["label"].startswith("Several trains match your journey.")
+    assert form["label"].startswith("I found several trains around that time.")
     result = bot.turn(first["state"], OPTIONS[0]["label"], form={"slot": "choice", "value": "08:09"})
     assert_final(result, "entitled")
     assert not sensed(result)

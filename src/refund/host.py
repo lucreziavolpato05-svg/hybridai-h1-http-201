@@ -63,6 +63,13 @@ def _source(text: str) -> str:
     return "\n".join([*libraries, program, message])
 
 
+# The dialogue model words rule-chosen questions; it must not drift into another
+# language (e.g. German station names) unless the passenger explicitly asks.
+_ENGLISH = (" Always write the utterance in English, even if names, the question or the "
+            "conversation contain other languages; use another language only if the person "
+            "explicitly asked for that language.")
+
+
 def _dialogue_tools(channel: dialogue.Channel) -> dict:
     """Bind library functions to a private namespace, without swapping CHANNEL.
 
@@ -70,7 +77,7 @@ def _dialogue_tools(channel: dialogue.Channel) -> dict:
     as turn()/ask(). Cloning their globals preserves the actual library code
     while allowing two browser tabs to wait for input at the same time.
     """
-    namespace = dict(vars(dialogue), CHANNEL=channel)
+    namespace = dict(vars(dialogue), CHANNEL=channel, PHRASE=dialogue.PHRASE + _ENGLISH)
     for name, value in vars(dialogue).items():
         if isinstance(value, types.FunctionType) and value.__globals__ is vars(dialogue):
             bound = types.FunctionType(value.__code__, namespace, value.__name__,
