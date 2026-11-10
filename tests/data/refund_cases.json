@@ -1,0 +1,9 @@
+{
+  "_how": "Fill from ../auditor/refund_ground_truth.py (FrameX 0.5.0, rules only, no model). One case per outcome. Times are Zurich local. 'messages' is the conversation the passenger types.",
+  "_template": {
+    "id": "stgallen-zurich-0800-70min",
+    "messages": ["On 7 November I went from St. Gallen to Zürich HB at 08:00, ticket CHF 46. Refund?", "the 08:00 one"],
+    "expect": {"status": "entitled", "reply_contains": ["25", "%"], "reply_not_contains": ["50 %"]}
+  },
+  "cases": []
+}

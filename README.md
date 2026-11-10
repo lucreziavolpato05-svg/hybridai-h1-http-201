@@ -74,3 +74,32 @@ see the development guide for setup.
 | `tests/` | Regression tests and opt-in snapshot checks |
 | `docs/` | User and developer guides |
 | `scripts/install-engine.sh` | Builds the FrameX engine into `.venv/bin` |
+
+## Refund chat (Hackathon 2)
+
+Gradio chat for the fact-safe refund assistant, with a workflow view of every
+step (pattern, actor, what crossed the boundary):
+
+```bash
+uv run python src/chat/app.py                              # demo backend, no model
+REFUND_BACKEND=module:attr uv run python src/chat/app.py   # the real pipeline
+```
+
+The UI calls one seam, `Backend.respond(message, state) -> Turn`
+(`src/chat/backend.py`). It never decides or edits a verdict: it shows the
+backend's reply unchanged, and any exception, unknown status or empty reply is
+shown as a technical failure handed on to customer service, never as "no refund".
+
+Tests:
+
+```bash
+uv run pytest tests/test_chat_ui.py                       # UI logic, no engine needed
+REFUND_BACKEND=module:attr uv run pytest tests/test_refund_acceptance.py -v
+uv run python scripts/try_prompts.py                      # sample conversations + trace
+```
+
+`test_refund_acceptance.py` is the auditor's specification and fails until the
+pipeline is connected. Its known cases (`tests/data/refund_cases.json`) come from
+the rules alone (`46-refunds.fx` on FrameX 0.5.0), never from the model.
+
+Coding tools used: Claude Code (Claude Opus 5.5). Language model in the system: GPT-5 mini.

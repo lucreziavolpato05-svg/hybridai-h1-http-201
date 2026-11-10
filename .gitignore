@@ -28,3 +28,6 @@ id_ed25519*
 secrets.*
 credentials.*
 *.secret
+
+# Prompt-run transcripts
+try_prompts_out.json
