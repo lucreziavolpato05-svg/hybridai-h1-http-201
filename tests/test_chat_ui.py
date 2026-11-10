@@ -166,3 +166,17 @@ def test_gradio_app_builds():
     gr = pytest.importorskip("gradio")
     from chat.app import build_demo
     assert isinstance(build_demo(DemoBackend()), gr.Blocks)
+
+
+def test_gradio_app_launches_with_theme_css_and_js():
+    """launch() is where theme, CSS and JS are applied in Gradio 6: building alone missed a crash."""
+    pytest.importorskip("gradio")
+    requests = pytest.importorskip("requests")
+    from chat.app import build_demo, launch
+    demo = build_demo(DemoBackend())
+    try:
+        launch(demo, prevent_thread_lock=True, server_port=7899, quiet=True)
+        page = requests.get("http://127.0.0.1:7899/", timeout=30)
+        assert page.status_code == 200
+    finally:
+        demo.close()

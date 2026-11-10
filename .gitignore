@@ -31,3 +31,5 @@ credentials.*
 
 # Prompt-run transcripts
 try_prompts_out.json
+!.env.example
+!.model-answers/
