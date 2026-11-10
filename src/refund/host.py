@@ -312,7 +312,7 @@ class Conversation:
 
 
 class RefundBot:
-    def __init__(self, kb=None, *, cache_dir=_ROOT / "recorded", env_file=_ROOT / ".env"):
+    def __init__(self, kb=None, *, cache_dir=_ROOT / ".model-answers", env_file=_ROOT / ".env"):
         _load_env(Path(env_file))
         for key, value in {"FRAMEX_MODEL_PROVIDER": "openai", "FRAMEX_MODEL": "gpt-5-mini",
                            "FRAMEX_MODEL_EFFORT": "minimal", "FRAMEX_MODEL_CACHE": str(cache_dir)}.items():

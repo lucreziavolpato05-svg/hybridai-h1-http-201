@@ -40,7 +40,7 @@ def main() -> int:
     if args.only is not None and not 1 <= args.only <= len(conversations):
         parser.error(f"--only must be between 1 and {len(conversations)}")
 
-    os.environ.setdefault("FRAMEX_MODEL_CACHE", str(REPO / "recorded"))
+    os.environ.setdefault("FRAMEX_MODEL_CACHE", str(REPO / ".model-answers"))
     if args.live:
         os.environ["FRAMEX_MODEL_REFRESH"] = "1"
     from chat.backend import load_backend, STATUSES
@@ -69,7 +69,7 @@ def main() -> int:
             })
             if status != "asking":
                 break
-    output = REPO / "recorded" / "demo_transcript.json"
+    output = REPO / ".model-answers" / "demo_transcript.json"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(transcript, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"\nTranscript: {output}")
