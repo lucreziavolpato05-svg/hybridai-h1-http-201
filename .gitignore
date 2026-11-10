@@ -14,3 +14,17 @@ target/
 .*
 # Secrets
 *.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+.env
+.env.*
+*.env
+secrets.*
+credentials.*
+*.secret
