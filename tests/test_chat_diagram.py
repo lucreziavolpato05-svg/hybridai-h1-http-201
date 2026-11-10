@@ -14,7 +14,7 @@ def rows(turn, *steps):
 
 def test_nothing_lit_before_the_first_message():
     html = render_diagram()
-    assert 'class="edge lit"' not in html and 'class="chip lit"' not in html
+    assert " lit" not in html
     assert all(f'data-edge="{e}"' in html for e in EDGES)
     assert all(f'data-pattern="{p}"' in html for p in PATTERNS)
 
@@ -55,9 +55,33 @@ def test_hand_over_and_failure_light_customer_service_and_p7():
 
 def test_lit_classes_appear_in_the_svg():
     html = render_diagram(rows(1, ("-", "passenger"), ("P1 Sensor", "model")), ASKING)
-    lit = set(re.findall(r'class="edge lit" data-edge="(e\d)"', html))
+    lit = set(re.findall(r'class="edge k-\w+ lit" data-edge="(e\d)"', html))
     assert lit == {"e1", "e6", "e4"}
-    assert 'class="chip lit" data-pattern="P1"' in html
+    assert 'class="chip k-p1 lit" data-pattern="P1"' in html
+    assert 'class="chip k-p3" data-pattern="P3"' in html
+
+
+def test_each_pattern_has_its_own_colour():
+    from chat.diagram import CSS, EDGES
+    kinds = {e[6] for e in EDGES.values()}
+    assert kinds == {"flow", "p1", "p3", "p5", "p7"}
+    for k in kinds:
+        assert f"--k-{k}:" in CSS, f"no colour for {k}"
+    light = CSS.split(".dark .sbb-diagram")[0]
+    colours = {light.split(f"--k-{k}:")[1].split(";")[0].strip() for k in kinds}
+    assert len(colours) == len(kinds), "two kinds share a colour"
+
+
+def test_lit_arrow_uses_its_pattern_marker():
+    html = render_diagram(rows(1, ("-", "passenger"), ("P1 Sensor", "model")), ASKING)
+    assert 'data-edge="e6"><path d="M 662 128 L 662 292" marker-end="url(#arrow-p1)"' in html
+    assert 'marker-end="url(#arrow-idle)"' in html
+
+
+def test_status_pill_escapes_and_hides_when_empty():
+    from chat.diagram import status_pill
+    assert status_pill(None, "") == ""
+    assert "&lt;b&gt;" in status_pill("asking", "<b>x</b>")
 
 
 def test_labels_are_escaped():
@@ -72,3 +96,9 @@ def test_diagram_follows_a_real_ui_turn():
     _, s = handle_message("St. Gallen to Zürich HB at 8", [], new_session(), B())
     edges, _, patterns = lit_from_trace(s["trace_rows"], s["status"])
     assert {"e1", "e3", "e4"} <= edges and patterns == {"P5"}
+
+
+def test_dark_rules_avoid_body_selectors_that_gradio_cannot_scope():
+    from chat.diagram import CSS
+    assert "body.dark" not in CSS and "body {" not in CSS
+    assert ".dark #theme-toggle" in CSS
