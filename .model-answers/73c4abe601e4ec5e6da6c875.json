@@ -1,5 +1,5 @@
 {
- "recorded_at": "2026-11-10T16:23:45Z",
+ "recorded_at": "2026-11-10T16:29:15Z",
  "provider": "openai",
  "model": "gpt-5-mini",
  "messages": [
@@ -37,9 +37,9 @@
   ]
  },
  "envelope": {
-  "id": "chatcmpl-EiivKyXAXdKlFnPcvPLDCUZpwpaFg",
+  "id": "chatcmpl-Eij0dABR6llSlaV4HSb06FipFdn09",
   "object": "chat.completion",
-  "created": 1794327826,
+  "created": 1794328155,
   "model": "gpt-5-mini-2025-08-07",
   "choices": [
    {

@@ -1,5 +1,5 @@
 {
- "recorded_at": "2026-11-10T16:23:37Z",
+ "recorded_at": "2026-11-10T16:30:59Z",
  "provider": "openai",
  "model": "gpt-5-mini",
  "messages": [
@@ -15,11 +15,6 @@
  "output": {
   "rows": [
    {
-    "slot": "date",
-    "value": "2026-11-08",
-    "quote": "On 8 November"
-   },
-   {
     "slot": "origin",
     "value": "St. Gallen",
     "quote": "from St. Gallen"
@@ -30,6 +25,11 @@
     "quote": "to Zürich HB"
    },
    {
+    "slot": "date",
+    "value": "2026-11-08",
+    "quote": "On 8 November"
+   },
+   {
     "slot": "time",
     "value": "08:00",
     "quote": "at 8 o'clock"
@@ -37,16 +37,16 @@
   ]
  },
  "envelope": {
-  "id": "chatcmpl-EiivCx6REhrLnrQr7rwzDosUVD5i2",
+  "id": "chatcmpl-Eij2JDgXTrg92M6NleOpyU8rGWMAx",
   "object": "chat.completion",
-  "created": 1794327818,
+  "created": 1794328259,
   "model": "gpt-5-mini-2025-08-07",
   "choices": [
    {
     "index": 0,
     "message": {
      "role": "assistant",
-     "content": "{\"rows\":[{\"slot\":\"date\",\"value\":\"2026-11-08\",\"quote\":\"On 8 November\"},{\"slot\":\"origin\",\"value\":\"St. Gallen\",\"quote\":\"from St. Gallen\"},{\"slot\":\"destination\",\"value\":\"Zürich HB\",\"quote\":\"to Zürich HB\"},{\"slot\":\"time\",\"value\":\"08:00\",\"quote\":\"at 8 o'clock\"}]}",
+     "content": "{\"rows\":[{\"slot\":\"origin\",\"value\":\"St. Gallen\",\"quote\":\"from St. Gallen\"},{\"slot\":\"destination\",\"value\":\"Zürich HB\",\"quote\":\"to Zürich HB\"},{\"slot\":\"date\",\"value\":\"2026-11-08\",\"quote\":\"On 8 November\"},{\"slot\":\"time\",\"value\":\"08:00\",\"quote\":\"at 8 o'clock\"}]}",
      "refusal": null,
      "annotations": []
     },

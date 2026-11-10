@@ -1,5 +1,5 @@
 {
- "recorded_at": "2026-11-10T16:23:47Z",
+ "recorded_at": "2026-11-10T16:31:01Z",
  "provider": "openai",
  "model": "gpt-5-mini",
  "messages": [
@@ -16,16 +16,16 @@
   "utterance": "What was your ticket price in CHF?"
  },
  "envelope": {
-  "id": "chatcmpl-EiivMfB622MM5SxQdwxor8pTOX554",
+  "id": "chatcmpl-Eij2MI7DUKKotNXvWWT8BOfoiJmk5",
   "object": "chat.completion",
-  "created": 1794327828,
+  "created": 1794328262,
   "model": "gpt-5-mini-2025-08-07",
   "choices": [
    {
     "index": 0,
     "message": {
      "role": "assistant",
-     "content": "{\"utterance\":\"What was your ticket price in CHF?\"}",
+     "content": "{\"utterance\": \"What was your ticket price in CHF?\"}",
      "refusal": null,
      "annotations": []
     },
@@ -34,8 +34,8 @@
   ],
   "usage": {
    "prompt_tokens": 220,
-   "completion_tokens": 22,
-   "total_tokens": 242,
+   "completion_tokens": 23,
+   "total_tokens": 243,
    "prompt_tokens_details": {
     "cached_tokens": 0,
     "audio_tokens": 0

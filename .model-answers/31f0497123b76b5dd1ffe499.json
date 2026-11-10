@@ -1,5 +1,5 @@
 {
- "recorded_at": "2026-11-10T16:23:51Z",
+ "recorded_at": "2026-11-10T16:29:23Z",
  "provider": "openai",
  "model": "gpt-5-mini",
  "messages": [
@@ -13,19 +13,25 @@
   }
  ],
  "output": {
-  "rows": []
+  "rows": [
+   {
+    "slot": "origin",
+    "value": "the first one",
+    "quote": "the first one"
+   }
+  ]
  },
  "envelope": {
-  "id": "chatcmpl-EiivRIw4sDztAzSyRKaAmTl3rAQGo",
+  "id": "chatcmpl-Eij0mSv8WIsj0PrPt4HkzOrZrhy3i",
   "object": "chat.completion",
-  "created": 1794327833,
+  "created": 1794328164,
   "model": "gpt-5-mini-2025-08-07",
   "choices": [
    {
     "index": 0,
     "message": {
      "role": "assistant",
-     "content": "{\"rows\":[]}",
+     "content": "{\"rows\":[{\"slot\":\"origin\",\"value\":\"the first one\",\"quote\":\"the first one\"}]}",
      "refusal": null,
      "annotations": []
     },
@@ -34,8 +40,8 @@
   ],
   "usage": {
    "prompt_tokens": 220,
-   "completion_tokens": 13,
-   "total_tokens": 233,
+   "completion_tokens": 30,
+   "total_tokens": 250,
    "prompt_tokens_details": {
     "cached_tokens": 0,
     "audio_tokens": 0
