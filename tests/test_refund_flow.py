@@ -86,9 +86,9 @@ class StubKB:
         if self.ambiguous and parameters.get("choice") != "08:09":
             output = {"status": "ambiguous", "rows": [
                 {"departure": "08:09", "arrival": "09:09", "train": "IC 1", "changes": 0,
-                 "label": "08:09 IC 1 (arrives 09:09)"},
+                 "label": "08:09 IC 1 (arrives 09:09)", "key": "08:09"},
                 {"departure": "08:39", "arrival": "09:39", "train": "IC 5", "changes": 0,
-                 "label": "08:39 IC 5 (arrives 09:39)"}]}
+                 "label": "08:39 IC 5 (arrives 09:39)", "key": "08:39"}]}
         elif self.measure_status != "measured":
             output = {"status": self.measure_status, "reason": "actual arrival is absent"}
         else:

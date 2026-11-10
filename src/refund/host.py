@@ -11,6 +11,7 @@ import math
 import os
 import queue
 import re
+import sys
 import threading
 import types
 from importlib.resources import files
@@ -268,7 +269,7 @@ class Conversation:
             form = {"slot": request["missing"], "kind": kind,
                     "label": request.get("question", "")}
             if kind == "choice":
-                form["options"] = [{"value": row["departure"],
+                form["options"] = [{"value": row.get("key", row["departure"]),
                                     "label": row.get("label", row["departure"])}
                                    for row in self._rows if "departure" in row]
             elif kind == "number":
@@ -409,6 +410,7 @@ class Conversation:
             self.status, self.done = "failed", True
             self.inbound.put(_STOP)
             self._output.append("I could not complete the check. Please contact SBB customer service.")
+            print(f"[refund] conversation failed: {error}", file=sys.stderr, flush=True)
             self.trace.append(_step(summary=error, receipt={"error": error}, ok=False))
 
 

@@ -270,9 +270,20 @@ class RefundKB:
                 candidates.append((event, row))
             if not candidates:
                 return {"status": "noTrain"}
+            # Each offered row gets a unique choice key: the departure, or departure + train
+            # when two trains leave in the same minute (so the passenger can tell them apart).
+            per_minute = {}
+            for _, row in candidates:
+                per_minute[row["departure"]] = per_minute.get(row["departure"], 0) + 1
+            for _, row in candidates:
+                dep = row["departure"]
+                row["key"] = dep if per_minute[dep] == 1 else f'{dep} {row.get("train", "")}'.strip()
             if wanted:
                 selected = [c for c in candidates if c[1]["departure"] == wanted[0]
-                            and (not wanted[1] or wanted[1] in c[1].get("train", "").lower())]
+                            and (not wanted[1] or wanted[1] == c[1].get("train", "").lower())]
+                if not selected and wanted[1]:
+                    selected = [c for c in candidates if c[1]["departure"] == wanted[0]
+                                and wanted[1] in c[1].get("train", "").lower()]
                 if not selected:
                     return {"status": "ambiguous", "rows": [c[1] for c in candidates][:64]}
             else:

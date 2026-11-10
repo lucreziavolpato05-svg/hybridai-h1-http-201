@@ -27,7 +27,7 @@ readDestination[text -> ?T] <- readRefund[text -> ?P] AND ?T := concat(?P, " Thi
 readDate[text -> ?T] <- readRefund[text -> ?P] AND ?T := concat(?P, " This document answers a question about the travel date.").
 readTime[text -> ?T] <- readRefund[text -> ?P] AND ?T := concat(?P, " This document answers a question about planned departure time.").
 readPrice[text -> ?T] <- readRefund[text -> ?P] AND ?T := concat(?P, " This document answers a question about ticket price in CHF.").
-readChoice[text -> ?T] <- readRefund[text -> ?P] AND ?T := concat(?P, " This document is the passenger's answer to the question which of the offered trains (listed below) they took. Extract the selected train as slot choice: its planned departure HH:MM exactly as listed (\"the first one\" means the first listed train). The quote must be the passenger's own words from document. If the answer does not identify exactly one listed train, omit the choice row.").
+readChoice[text -> ?T] <- readRefund[text -> ?P] AND ?T := concat(?P, " This document is the passenger's answer to the question which of the offered trains (listed below) they took. Extract the selected train as slot choice: its planned departure HH:MM exactly as listed; if another listed train leaves in the same minute, add its train name as listed, e.g. 09:02 IC IC8 (\"the first one\" means the first listed train). The quote must be the passenger's own words from document. If the answer does not identify exactly one listed train, omit the choice row.").
 
 // A bounded chain gives each passenger answer an independent, escaped source.
 // At most two questions per six slots means twelve answers can be needed.
@@ -83,7 +83,7 @@ external sense(?D) using _llm[tool#order -> 1] <- ?D:sensor#Source[sensor#text -
     <- ?D[sensor#accepted(?I) -> ?V; sensor#slot(?I) -> "choice"; refund#previous -> ?P]
     AND ?P[refund#askSlot -> "choice"]
     AND ?M[tool#name -> "_measure"; tool#arg1 -> ?P; result("status") -> "ambiguous";
-        row(?Row, "departure") -> ?V].
+        row(?Row, "key") -> ?V].
 ?D[refund#conflict(?S) -> true] <- ?D[refund#proposal(?S) -> ?A; refund#proposal(?S) -> ?B] AND ?A != ?B.
 
 // P5 form answers: the UI's structured answer to the asked slot is already a value,
@@ -123,7 +123,7 @@ refundClock[refund#hour -> "00"; refund#hour -> "01"; refund#hour -> "02"; refun
 ?D[refund#proposal("choice") -> ?V] <- ?D[refund#form("choice") -> ?V; refund#previous -> ?P]
     AND ?P[refund#askSlot -> "choice"]
     AND ?M[tool#name -> "_measure"; tool#arg1 -> ?P; result("status") -> "ambiguous";
-        row(?Row, "departure") -> ?V].
+        row(?Row, "key") -> ?V].
 
 // P5 Rules steer: read a completed sensor through FrameX's native _query tool.
 // The dated query receipt explicitly records presence/absence. This avoids the
