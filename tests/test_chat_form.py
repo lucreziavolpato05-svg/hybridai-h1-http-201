@@ -150,3 +150,19 @@ def test_form_answer_is_recorded_in_the_trace():
     _, s = submit_form("1", None, [], session_with(TRAINS), b)
     row = next(r for r in s["trace_rows"] if r[4] == "form answer")
     assert '"value": "ev_2"' in row[5] and row[3] == "passenger"
+
+
+def test_number_is_sent_as_a_float():
+    b = Scripted(Turn("Thanks.", ASKING, {}, []))
+    submit_form(None, 52, [], session_with(PRICE), b)
+    value = b.calls[0][1]["formAnswer"]["value"]
+    assert isinstance(value, float) and value == 52.0
+
+
+@pytest.mark.parametrize("kind,typed", [("text", "Zürich HB"), ("date", "2026-11-07"), ("time", "08:00")])
+def test_text_date_time_fields_send_a_string(kind, typed):
+    b = Scripted(Turn("ok", ASKING, {}, []))
+    form = {"slot": "x", "kind": kind, "label": "?"}
+    history, _ = submit_form(None, None, [], session_with(form), b, text=f"  {typed} ")
+    assert b.calls[0] == (typed, {"form": form, "case": "c1", "formAnswer": {"slot": "x", "value": typed}})
+    assert history[-2]["content"] == typed

@@ -22,8 +22,11 @@ import gradio as gr
 
 from chat.backend import Backend, DemoBackend, load_backend
 from chat.diagram import CSS, HEADER_HTML, LOAD_JS, TOGGLE_JS, render_diagram, status_pill
-from chat.ui import (TRACE_HEADERS, choice_items, current_form, handle_message, new_session,
-                     status_label, submit_form)
+from chat.ui import (DESCRIBE, DESCRIBE_LABEL, TRACE_HEADERS, current_form, handle_message,
+                     new_session, status_label, submit_form)
+
+MAX_OPTIONS = 10  # option buttons pre-created for a choice form
+FOCUS_JS = "() => { document.querySelector('#msg-box textarea')?.focus(); }"
 
 SBB_RED = gr.themes.Color(
     c50="#FFECEC", c100="#FFD1D1", c200="#FFA3A3", c300="#FF6B6B", c400="#F53333",
@@ -53,16 +56,23 @@ def build_demo(backend: Backend | None = None) -> gr.Blocks:
                 # The backend's form (state["form"]): rendered here, answered here, decided there.
                 with gr.Group(visible=False, elem_id="form-card") as form_box:
                     form_label = gr.Markdown("", elem_id="form-label")
-                    form_choice = gr.Radio(choices=[], value=None, visible=False, show_label=False,
-                                           elem_id="form-choice")
+                    # Gradio cannot add components per turn: a fixed pool, shown/relabelled per form.
+                    with gr.Row(elem_id="form-choice"):
+                        option_btns = [gr.Button("", visible=False, size="sm", scale=0,
+                                                 elem_classes="form-option")
+                                       for _ in range(MAX_OPTIONS)]
+                        describe_btn = gr.Button(DESCRIBE_LABEL, visible=False, size="sm", scale=0,
+                                                 variant="secondary", elem_classes="form-describe")
                     with gr.Row(equal_height=True):
                         form_number = gr.Number(value=None, visible=False, show_label=False,
                                                 elem_id="form-number")
-                        form_send = gr.Button("Confirm", variant="primary", visible=False, scale=0,
+                        form_text = gr.Textbox(value="", visible=False, show_label=False, lines=1,
+                                               max_lines=1, elem_id="form-text")
+                        form_send = gr.Button("Send", variant="primary", visible=False, scale=0,
                                               elem_id="form-send")
                 box = gr.Textbox(placeholder="e.g. St. Gallen to Zürich HB at 8:00, CHF 46 ticket ...",
                                  label="Your message (Enter to send, Shift+Enter for a new line)",
-                                 lines=1, max_lines=6)  # lines=1 makes Enter submit in Gradio 6
+                                 lines=1, max_lines=6, elem_id="msg-box")  # lines=1: Enter submits
                 with gr.Row():
                     send = gr.Button("Send", variant="primary", elem_id="send-btn")
                     reset = gr.Button("New conversation", elem_id="reset-btn")
@@ -76,17 +86,19 @@ def build_demo(backend: Backend | None = None) -> gr.Blocks:
 
         def form_view(sess):
             form = current_form(sess)
-            hidden = (gr.Group(visible=False), "", gr.Radio(choices=[], value=None, visible=False),
-                      gr.Number(value=None, visible=False), gr.Button(visible=False))
-            if form is None or form["kind"] not in ("choice", "number"):
-                return hidden  # text, date, time: the passenger types in the message box
-            label = str(form.get("label") or "Your answer")
-            if form["kind"] == "choice":
-                return (gr.Group(visible=True), label,
-                        gr.Radio(choices=choice_items(form), value=None, visible=True),
-                        gr.Number(value=None, visible=False), gr.Button(visible=False))
-            return (gr.Group(visible=True), label, gr.Radio(choices=[], value=None, visible=False),
-                    gr.Number(value=None, visible=True, minimum=form.get("min")), gr.Button(visible=True))
+            kind = form["kind"] if form else None
+            options = form["options"][:MAX_OPTIONS] if kind == "choice" else []
+            buttons = [gr.Button(value=str(options[i]["label"]), visible=True) if i < len(options)
+                       else gr.Button(visible=False) for i in range(MAX_OPTIONS)]
+            typed = kind in ("text", "date", "time")
+            hint = {"date": "e.g. 2026-11-07", "time": "e.g. 08:00"}.get(kind, "")
+            return (gr.Group(visible=form is not None),
+                    str(form.get("label") or "Your answer") if form else "",
+                    *buttons, gr.Button(visible=kind == "choice"),
+                    gr.Number(value=None, visible=kind == "number",
+                              minimum=form.get("min") if kind == "number" else None),
+                    gr.Textbox(value="", visible=typed, placeholder=hint),
+                    gr.Button(visible=kind == "number" or typed))
 
         def view(history, sess):
             label = status_label(sess.get("status"))
@@ -96,23 +108,40 @@ def build_demo(backend: Backend | None = None) -> gr.Blocks:
         def on_send(message, history, sess):
             return ("", *view(*handle_message(message, history, sess, backend)))
 
-        def on_choice(choice, history, sess):
-            return view(*submit_form(choice, None, history, sess, backend))
+        def on_option(index):
+            def handler(history, sess):
+                return view(*submit_form(str(index), None, history, sess, backend))
+            return handler
 
-        def on_number(number, history, sess):
-            return view(*submit_form(None, number, history, sess, backend))
+        def on_describe(history, sess):
+            return view(*submit_form(DESCRIBE, None, history, sess, backend))
+
+        def on_form_send(number, text, history, sess):
+            return view(*submit_form(None, number, history, sess, backend, text=text))
 
         def on_reset():
             return view([], new_session())
 
-        shown = [chatbot, session, trace, status, diagram, form_box, form_label, form_choice,
-                 form_number, form_send]
-        send.click(on_send, [box, chatbot, session], [box, *shown])
-        box.submit(on_send, [box, chatbot, session], [box, *shown])
-        form_choice.input(on_choice, [form_choice, chatbot, session], shown)  # a click sends
-        form_send.click(on_number, [form_number, chatbot, session], shown)
-        form_number.submit(on_number, [form_number, chatbot, session], shown)
-        reset.click(on_reset, None, shown)
+        def working():
+            return status_pill("working", "Working…")
+
+        quiet = {"show_progress": "hidden"}  # no Gradio ETA overlay ("1.0/7.6s")
+        shown = [chatbot, session, trace, status, diagram, form_box, form_label, *option_btns,
+                 describe_btn, form_number, form_text, form_send]
+
+        def wire(trigger, fn, inputs, outputs):
+            trigger(working, None, status, queue=False, **quiet).then(fn, inputs, outputs, **quiet)
+
+        wire(send.click, on_send, [box, chatbot, session], [box, *shown])
+        wire(box.submit, on_send, [box, chatbot, session], [box, *shown])
+        for i, btn in enumerate(option_btns):  # a click sends that option at once
+            wire(btn.click, on_option(i), [chatbot, session], shown)
+        describe_btn.click(on_describe, [chatbot, session], shown, **quiet).then(
+            None, None, None, js=FOCUS_JS)
+        wire(form_send.click, on_form_send, [form_number, form_text, chatbot, session], shown)
+        wire(form_number.submit, on_form_send, [form_number, form_text, chatbot, session], shown)
+        wire(form_text.submit, on_form_send, [form_number, form_text, chatbot, session], shown)
+        reset.click(on_reset, None, shown, **quiet)
         theme_btn.click(None, None, None, js=TOGGLE_JS)
     return demo
 

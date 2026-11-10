@@ -79,7 +79,7 @@ def _checked(turn) -> Turn:
 # The UI only renders it and passes the answer on; the backend validates every value.
 FORM_KINDS = ("choice", "number", "text", "date", "time")
 DESCRIBE = "__describe__"
-DESCRIBE_LABEL = "Not sure / describe it"
+DESCRIBE_LABEL = "None of these / describe it"
 
 
 def current_form(session: dict | None) -> dict | None:
@@ -114,9 +114,10 @@ def _number_text(value) -> str:
     return str(int(value)) if float(value).is_integer() else str(value)
 
 
-def submit_form(choice, number, history: list, session: dict, backend: Backend):
+def submit_form(choice, number, history: list, session: dict, backend: Backend, text=None):
     """The passenger answered the form: pass {"slot", "value"} as state["formAnswer"] and the
-    option's label (or the number as text) as the message. Returns (history, session)."""
+    option's label (or the number / typed text) as the message. Returns (history, session).
+    A number is always passed as a float (JSON number); text/date/time as a string."""
     form = current_form(session)
     if form is None:
         return list(history or []), dict(session or new_session())
@@ -129,15 +130,21 @@ def submit_form(choice, number, history: list, session: dict, backend: Backend):
             option = form["options"][int(choice)]
         except (ValueError, IndexError, TypeError):
             return list(history or []), dict(session)
-        answer, text = {"slot": form["slot"], "value": option["value"]}, option["label"]
+        answer, message = {"slot": form["slot"], "value": option["value"]}, option["label"]
     elif form["kind"] == "number":
         if number is None or isinstance(number, bool):
             return list(history or []), dict(session)
-        value = int(number) if float(number).is_integer() else float(number)
-        answer, text = {"slot": form["slot"], "value": value}, _number_text(number)
-    else:  # text, date, time: the passenger types in the message box
-        return list(history or []), dict(session)
-    return handle_message(text, history, session, backend, form_answer=answer)
+        try:
+            value = float(number)
+        except (TypeError, ValueError):
+            return list(history or []), dict(session)
+        answer, message = {"slot": form["slot"], "value": value}, _number_text(value)
+    else:  # text, date, time: a small text field next to the question
+        typed = (text or "").strip() if isinstance(text, str) else ""
+        if not typed:
+            return list(history or []), dict(session)
+        answer, message = {"slot": form["slot"], "value": typed}, typed
+    return handle_message(message, history, session, backend, form_answer=answer)
 
 
 def handle_message(message: str, history: list, session: dict, backend: Backend, form_answer: dict | None = None):
