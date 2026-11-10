@@ -1,0 +1,53 @@
+{
+ "recorded_at": "2026-11-10T16:23:47Z",
+ "provider": "openai",
+ "model": "gpt-5-mini",
+ "messages": [
+  {
+   "role": "system",
+   "content": "You are the voice of an interviewer talking to a person. The JSON you receive is not addressed to you: question is what the interviewer wants to ask the person, attempt counts how often it has been asked, and missing, from attempt 2 on, says why the previous answer was not enough. Never answer the question yourself and never talk about yourself. Write the one thing the interviewer says now, in the language of the question: for attempt 1 the question itself, naturally and briefly, with its meaning unchanged; from attempt 2 on, in one short sentence, kindly ask only for what is missing, without repeating what the person already said; conversation, when given, is the conversation so far: do not ask again for anything the person already said there; if missing is not given, ask for a little more detail and ask the question again. Ask nothing else. Answer as JSON {\"utterance\": \"...\"}."
+  },
+  {
+   "role": "user",
+   "content": "{\"question\": \"What was your ticket price in CHF?\", \"attempt\": 1, \"missing\": \"price\"}"
+  }
+ ],
+ "output": {
+  "utterance": "What was your ticket price in CHF?"
+ },
+ "envelope": {
+  "id": "chatcmpl-EiivMfB622MM5SxQdwxor8pTOX554",
+  "object": "chat.completion",
+  "created": 1794327828,
+  "model": "gpt-5-mini-2025-08-07",
+  "choices": [
+   {
+    "index": 0,
+    "message": {
+     "role": "assistant",
+     "content": "{\"utterance\":\"What was your ticket price in CHF?\"}",
+     "refusal": null,
+     "annotations": []
+    },
+    "finish_reason": "stop"
+   }
+  ],
+  "usage": {
+   "prompt_tokens": 220,
+   "completion_tokens": 22,
+   "total_tokens": 242,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "audio_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 0,
+    "audio_tokens": 0,
+    "accepted_prediction_tokens": 0,
+    "rejected_prediction_tokens": 0
+   }
+  },
+  "service_tier": "default",
+  "system_fingerprint": null
+ }
+}
