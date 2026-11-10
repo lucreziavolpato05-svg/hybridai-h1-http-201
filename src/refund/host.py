@@ -137,6 +137,40 @@ class _Closed(RuntimeError):
     pass
 
 
+_PRICE = re.compile(r"^\s*(?:CHF|SFr\.?|Fr\.?)?\s*(\d{1,5}(?:[.,]\d{1,2})?)\s*(?:CHF|SFr\.?|Fr\.?|francs?|\.-)?\s*\.?\s*$", re.I)
+_TIME = re.compile(r"^\s*(?:at\s+)?(\d{1,2})[:.h](\d{2})\s*$", re.I)
+_DATE = re.compile(r"^\s*(\d{4}-\d{2}-\d{2})\s*$")
+
+
+def _quick_answer(form, text: str) -> dict | None:
+    """Read an unambiguous typed answer to the pending question without a model.
+
+    Only exact shapes are taken (a bare price, HH:MM, YYYY-MM-DD, or an offered
+    departure / option label); anything else returns None and is sensed by P1.
+    """
+    if not form or not isinstance(text, str):
+        return None
+    kind, slot = form.get("kind"), form.get("slot")
+    if kind == "number":
+        m = _PRICE.match(text)
+        return {"slot": slot, "value": float(m.group(1).replace(",", "."))} if m else None
+    if kind == "time":
+        m = _TIME.match(text)
+        if m and int(m.group(1)) < 24 and int(m.group(2)) < 60:
+            return {"slot": slot, "value": f"{int(m.group(1)):02d}:{m.group(2)}"}
+        return None
+    if kind == "date":
+        m = _DATE.match(text)
+        return {"slot": slot, "value": m.group(1)} if m else None
+    if kind == "choice":
+        typed = text.strip().casefold()
+        hits = [o["value"] for o in form.get("options", [])
+                if typed in (str(o.get("value", "")).casefold(), str(o.get("label", "")).casefold())
+                or (len(typed) >= 4 and str(o.get("label", "")).casefold().startswith(typed))]
+        return {"slot": slot, "value": hits[0]} if len(set(hits)) == 1 else None
+    return None
+
+
 def _form_answer(form) -> dict | None:
     """A well-formed UI form answer {slot, value}, or None (then the text is sensed).
 
@@ -380,7 +414,8 @@ class RefundBot:
     def __init__(self, kb=None, *, cache_dir=_ROOT / ".model-answers", env_file=_ROOT / ".env"):
         _load_env(Path(env_file))
         for key, value in {"FRAMEX_MODEL_PROVIDER": "openai", "FRAMEX_MODEL": "gpt-5-mini",
-                           "FRAMEX_MODEL_EFFORT": "minimal", "FRAMEX_MODEL_CACHE": str(cache_dir)}.items():
+                           "FRAMEX_MODEL_EFFORT": "minimal", "FRAMEX_MODEL_TIMEOUT": "60",
+                           "FRAMEX_MODEL_CACHE": str(cache_dir)}.items():
             os.environ.setdefault(key, value)
         # Import lazily so test adapters can use exactly the production contract.
         from refund.kb import RefundKB, tools as kb_tools
@@ -403,6 +438,10 @@ class RefundBot:
             raise ValueError("state belongs to another RefundBot")
         # A form answers a pending question; a new conversation is always sensed.
         answer = None if fresh else _form_answer(form)
+        if answer is None and not fresh:
+            # A plain typed answer ("120", "CHF 46", "08:00", "06:35") to the pending
+            # question is passed as a form answer: no model call; the rules validate it.
+            answer = _form_answer(_quick_answer(conversation.form(), text))
         with conversation._turn_lock:
             # A second request from the same tab may have queued behind a turn
             # that has just finished. It too must start a fresh conversation.

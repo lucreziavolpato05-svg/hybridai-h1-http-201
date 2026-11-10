@@ -132,6 +132,10 @@ refundClock[refund#hour -> "00"; refund#hour -> "01"; refund#hour -> "02"; refun
 ?D[refund#sensed -> true] <- ?D:sensor#Source
     AND ?R[tool#name -> "_llm"; tool#arg1 -> ?D; tool#status -> "succeeded"].
 ?D[refund#sensed -> true] <- ?D[refund#formSource -> true].
+// A failed reading of a follow-up answer counts as "nothing understood": the rules
+// ask again (bounded by the attempt counter) instead of handing on at once.
+?D[refund#sensed -> true] <- ?D:sensor#Source
+    AND ?R[tool#name -> "_llm"; tool#arg1 -> ?D; tool#status -> "failed"] AND ?D != "r0".
 external snapshot(?D, ?S) using _query[query -> ?Q; tool#order -> 2]
     <- ?D:sensor#Source[refund#sensed -> true] AND ?S:refund#Slot
     AND ?A := concat(concat("\"", ?D), "\"[refund#proposal(\"")
@@ -337,7 +341,7 @@ toolFailure:cp#Case[cp#file -> ?Why]
 // (keyed by the rule text) is not.
 toolFailure:cp#Case[cp#file -> ?Why]
     <- ?R[tool#name -> "_llm"; tool#arg1 -> ?D; tool#status -> "failed"; error -> ?Error]
-    AND ?D:sensor#Source
+    AND ?D:sensor#Source AND ?D = "r0"
     AND ?Why := concat("A required tool failed (_llm): ", ?Error).
 
 // P12 deliver once, then terminate only after the _say success receipt.

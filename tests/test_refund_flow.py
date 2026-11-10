@@ -308,7 +308,7 @@ def test_price_number_must_occur_in_its_quote(setup_bot):
     assert policy_calls == [{"delayMinutes": 70, "price": 40}]
 
 
-@pytest.mark.parametrize("value,quote", [("09:09", "09:09"), ("09:09", "08:09")])
+@pytest.mark.parametrize("value,quote", [("09:09", "09:09"), ("09:09", "the 08:09 one")])
 def test_choice_must_match_last_offered_departures(setup_bot, value, quote):
     bot, kb, answers, policy_calls = setup_bot(ambiguous=True)
     first = bot.turn(None, FULL)
@@ -803,13 +803,14 @@ def test_malformed_date_or_time_form_is_asked_again(setup_bot, slot, bad):
 
 
 def test_free_text_answer_is_still_sensed(setup_bot):
-    bot, _, _, _ = setup_bot()
+    bot, _, answers, _ = setup_bot()
     first = bot.turn(None, MISSING_PRICE)
-    final = bot.turn(first["state"], "40 CHF")
+    answers["it was 40 CHF"] = [row("price", 40, "40 CHF")]
+    final = bot.turn(first["state"], "it was 40 CHF")
     assert_final(final, "entitled")
     assert len(sensed(final)) == 1
     assert answer_receipt(final)["form"] is False
-    assert final["steps"][0]["summary"] == "40 CHF"
+    assert final["steps"][0]["summary"] == "it was 40 CHF"
 
 
 def test_chat_backend_offers_choice_form_and_passes_form_answer(setup_bot):
