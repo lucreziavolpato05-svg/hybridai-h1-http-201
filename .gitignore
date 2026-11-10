@@ -12,3 +12,5 @@ build/
 target/
 .DS_Store
 .*
+# Secrets
+*.key
