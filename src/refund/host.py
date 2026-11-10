@@ -17,6 +17,7 @@ from importlib.resources import files
 from pathlib import Path
 
 from framex import dialogue, tools
+from refund.slots import TOOLS as SLOT_TOOLS
 from runtime import query
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -278,6 +279,7 @@ class Conversation:
             "_query": ("rules", "P5 Rules steer"),
             "_format": ("rules", "P12 Model selects, rules write"),
             "_numbersMatch": ("rules", "P3 Translator"),
+            "_slotCheck": ("rules", "P1 Sensor"),
         }.get(tool, ("host", ""))
         phrasing = tool == "_llm" and "mustSay" in parameters
         if phrasing:
@@ -311,7 +313,7 @@ class Conversation:
 
     def _adapters(self):
         adapters = {**_dialogue_tools(self.channel), **self.bot._kb_tools,
-                    **self.bot._policy_tools, "_format": _format,
+                    **self.bot._policy_tools, **SLOT_TOOLS, "_format": _format,
                     "_numbersMatch": _numbers_match}
         measure = adapters["_measure"]
 

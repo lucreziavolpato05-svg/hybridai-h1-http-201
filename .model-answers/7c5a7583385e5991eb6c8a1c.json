@@ -9,7 +9,7 @@
   },
   {
    "role": "user",
-   "content": "{\"document\": \"On 7 November I was going from St. Gallen to Zürich HB at 8 o'clock. My train was late. Do I get a refund?\"}"
+   "content": "{\"document\": \"On 7 November I was going from St. Gallen to Z\u00fcrich HB at 8 o'clock. My train was late. Do I get a refund?\"}"
   }
  ],
  "output": {
@@ -21,8 +21,8 @@
    },
    {
     "slot": "destination",
-    "value": "Zürich HB",
-    "quote": "Zürich HB"
+    "value": "Z\u00fcrich HB",
+    "quote": "Z\u00fcrich HB"
    },
    {
     "slot": "date",
@@ -46,7 +46,7 @@
     "index": 0,
     "message": {
      "role": "assistant",
-     "content": "{\"rows\":[{\"slot\":\"origin\",\"value\":\"St. Gallen\",\"quote\":\"St. Gallen\"},{\"slot\":\"destination\",\"value\":\"Zürich HB\",\"quote\":\"Zürich HB\"},{\"slot\":\"date\",\"value\":\"2026-11-07\",\"quote\":\"On 7 November\"},{\"slot\":\"time\",\"value\":\"08:00\",\"quote\":\"at 8 o'clock\"}]}",
+     "content": "{\"rows\":[{\"slot\":\"origin\",\"value\":\"St. Gallen\",\"quote\":\"St. Gallen\"},{\"slot\":\"destination\",\"value\":\"Z\u00fcrich HB\",\"quote\":\"Z\u00fcrich HB\"},{\"slot\":\"date\",\"value\":\"2026-11-07\",\"quote\":\"On 7 November\"},{\"slot\":\"time\",\"value\":\"08:00\",\"quote\":\"at 8 o'clock\"}]}",
      "refusal": null,
      "annotations": []
     },

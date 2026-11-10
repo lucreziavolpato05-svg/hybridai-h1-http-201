@@ -148,8 +148,15 @@ def test_demo_backend_never_gives_a_verdict():
         assert turn.status not in (ENTITLED, NOT_ENTITLED)
 
 
-def test_load_backend_defaults_to_demo(monkeypatch):
+def test_demo_backend_on_request(monkeypatch):
+    monkeypatch.setenv("REFUND_BACKEND", "demo")
+    assert isinstance(load_backend(), DemoBackend)
+
+
+def test_default_backend_is_the_real_pipeline(monkeypatch):
+    assert be.DEFAULT_BACKEND == "refund.chat_backend:RefundBackend"
     monkeypatch.delenv("REFUND_BACKEND", raising=False)
+    monkeypatch.setattr(be, "DEFAULT_BACKEND", "chat.backend:DemoBackend")  # don't load the KB in a unit test
     assert isinstance(load_backend(), DemoBackend)
 
 

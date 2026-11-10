@@ -6,8 +6,9 @@ it return a ``Turn`` or write a small adapter in ``load_backend``. Nothing in
 the UI decides a refund: it shows what the backend returns, unchanged.
 
 Select the backend with the environment variable REFUND_BACKEND="module:attr",
-where attr is a Backend instance or a zero-argument factory. Without it, the
-clearly labelled DemoBackend runs so the UI can be developed and tested.
+where attr is a Backend instance or a zero-argument factory. Unset, the real FrameX
+pipeline runs (refund.chat_backend:RefundBackend); REFUND_BACKEND=demo runs the
+clearly labelled DemoBackend, for UI work without the engine or a model.
 """
 from __future__ import annotations
 
@@ -66,9 +67,15 @@ class DemoBackend:
                     "decided by the rules or handed on to SBB customer service.", HANDED_ON, new_state, trace)
 
 
+DEFAULT_BACKEND = "refund.chat_backend:RefundBackend"   # the FrameX refund pipeline
+
+
 def load_backend(spec: str | None = None) -> Backend:
+    """REFUND_BACKEND="module:attr" selects the backend; unset means the real pipeline,
+    "demo" the scripted DemoBackend (no model, no knowledge base, no verdicts)."""
     spec = spec if spec is not None else os.environ.get("REFUND_BACKEND", "")
-    if not spec:
+    spec = spec.strip() or DEFAULT_BACKEND
+    if spec.lower() == "demo":
         return DemoBackend()
     module_name, _, attr = spec.partition(":")
     obj = getattr(importlib.import_module(module_name), attr or "backend")
