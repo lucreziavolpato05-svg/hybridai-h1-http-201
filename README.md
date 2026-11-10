@@ -36,7 +36,32 @@ In the chat, **Enter** sends and **Shift+Enter** adds a new line. Without
 no verdicts). The real pipeline is selected with `REFUND_BACKEND=module:attr`
 (see `src/chat/backend.py`).
 
-> TODO before submission: put the real pipeline's `REFUND_BACKEND` value here.
+The real pipeline: `REFUND_BACKEND=refund.chat_backend:RefundBackend` (see below).
+
+### Refund pipeline (FrameX)
+
+Run (bash; PowerShell below):
+
+```bash
+REFUND_BACKEND=refund.chat_backend:RefundBackend uv run python src/chat/app.py
+```
+```powershell
+$env:REFUND_BACKEND="refund.chat_backend:RefundBackend"; uv run python src/chat/app.py
+```
+
+- `.env` with `OPENAI_API_KEY` (never committed).
+- Model answers are cached in `.model-answers/` for offline replay; record new ones with `uv run python scripts/record_demo.py --live`.
+- Tests: `uv run pytest -q tests/test_refund_flow.py tests/test_refund_chat_backend.py tests/test_refund_policy.py tests/test_refund_kb.py`
+- P1 Sensor: the model extracts slots, accepted only if the quote is in the passenger's text.
+- P3 Translator: the model phrases the rule verdict; accepted only if the decision word and the numbers match.
+- P5 Rules steer: the rules decide what to ask, the model words it (max 2 per fact).
+- P7 Competence: what the rules cannot settle is handed on to SBB customer service.
+- P12 Rules write: the verdict sentence comes from KB and policy receipts.
+
+Details: [docs/refund-assistant.md](docs/refund-assistant.md).
+
+Tools & models: coding agents Claude Code (Claude Opus 5.5; subagents on Claude Opus and Sonnet), OpenAI Codex (gpt-6.1-sol, gpt-6.1-terra, default model); in-system language model GPT-5 mini.
+
 
 ## How it works
 
