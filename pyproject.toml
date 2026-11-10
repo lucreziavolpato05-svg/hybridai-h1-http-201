@@ -17,7 +17,7 @@ dev = ["pytest>=8"]
 
 [tool.uv.sources]
 # Keep this rev in step with the engine: scripts/install-engine.sh reads it.
-framex = { git = "https://gitlab.com/ds-unisg/framex-core", subdirectory = "python", rev = "48b5f077f542e0c44a18874871b82a899161128a" }
+framex = { git = "https://gitlab.com/ds-unisg/framex-core", subdirectory = "python", rev = "977bb14db288caeb6bf1b253fdb8e25f83ada711" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

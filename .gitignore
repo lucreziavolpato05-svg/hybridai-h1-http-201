@@ -3,7 +3,7 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 # Generated logic bases: fx/, fx-demo/, fx-benchmarks/, any fx-* scratch build.
-fx/
+# fx/
 fx-*/
 .sbb-build-*/
 # `uv build` output and local Rust builds.

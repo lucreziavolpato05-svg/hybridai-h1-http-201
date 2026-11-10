@@ -5,6 +5,7 @@ Trip { tripRef: String, observedOn: String, serviceCategory: String,
        lineText: String, operator: String }.
 StopEvent { ofTrip: Trip, atStopPoint: StopPoint, stopSequence: Integer,
             scheduledArrival: String, scheduledDeparture: String,
+            scheduledArrivalEpoch: Integer, scheduledDepartureEpoch: Integer,
             arrivalEpoch: Integer, departureEpoch: Integer,
             cancelled: Boolean, passThrough: Boolean,
             nextRealStop: StopEvent, nextRideStop: StopEvent, rideSegment: RideSegment }.

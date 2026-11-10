@@ -115,3 +115,4 @@ def run(workspace: Path, query: str, command: str = "query",
             "Unbounded recursion is the usual cause -- reachability in this model "
             "is bounded (reachDirect / reach1 / reach2) for exactly that reason."
         ) from None
+
