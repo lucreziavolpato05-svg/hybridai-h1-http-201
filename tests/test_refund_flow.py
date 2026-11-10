@@ -20,6 +20,12 @@ from runtime import query
 
 MISSING_PRICE = "On 7 November I travelled from St. Gallen to Zurich HB at 8 o'clock."
 FULL = MISSING_PRICE + " My ticket cost 40 CHF."
+PHRASE_PROMPT = "Rewrite document politely for the passenger"
+TECHNICAL_REPLY = "A technical check could not be completed, so I am handing your case to SBB customer service."
+ECHO_40 = "Journey: St. Gallen → Zürich HB, 2026-11-07, planned departure 08:09, train IC 1, ticket CHF 40. "
+HEAD_25 = "Yes, you are eligible for a refund of CHF 10.00 (25% of your CHF 40.00 ticket). " + ECHO_40
+RULE_25 = (HEAD_25 + "Planned arrival 09:09, "
+           "actual arrival 10:19. Measured arrival delay: 70 minutes. ")
 
 
 def row(slot, value, quote):
@@ -78,8 +84,10 @@ class StubKB:
             raise RuntimeError("measurement fixture unavailable")
         if self.ambiguous and parameters.get("choice") != "08:09":
             output = {"status": "ambiguous", "rows": [
-                {"departure": "08:09", "arrival": "09:09", "train": "IC 1", "changes": 0},
-                {"departure": "08:39", "arrival": "09:39", "train": "IC 5", "changes": 0}]}
+                {"departure": "08:09", "arrival": "09:09", "train": "IC 1", "changes": 0,
+                 "label": "08:09 IC 1 (arrives 09:09)"},
+                {"departure": "08:39", "arrival": "09:39", "train": "IC 5", "changes": 0,
+                 "label": "08:39 IC 5 (arrives 09:39)"}]}
         elif self.measure_status != "measured":
             output = {"status": self.measure_status, "reason": "actual arrival is absent"}
         else:
@@ -99,8 +107,21 @@ def setup_bot(monkeypatch):
     policy_calls = []
 
     def offline_model(parameters):
+        if "question" in parameters:
+            value = answers.get(parameters["question"], {"utterance": parameters["question"]})
+            if isinstance(value, Exception):
+                raise value
+            return dict(value), {"mode": "offline question fixture"}
         assert "document" in parameters, "Unexpected model request (no live model allowed)"
         text = parameters["document"]
+        if text.startswith("Options offered: ") and " Passenger answer: " in text:
+            text = text.split(" Passenger answer: ", 1)[1]  # fixtures are keyed by the passenger's words
+        if parameters.get("prompt", "").startswith(PHRASE_PROMPT):
+            # P3 phrasing of a rule text: default to the no-API-key failure.
+            value = answers.get(text, RuntimeError("no phrasing fixture (offline)"))
+            if isinstance(value, Exception):
+                raise value
+            return dict(value), {"mode": "offline translator fixture"}
         value = answers.get(text, [])
         if isinstance(value, Exception):
             raise value
@@ -153,6 +174,9 @@ def test_missing_price_then_25_percent(setup_bot):
     assert "price" in first["reply"].lower()
     assert not policy_calls
     assert first["steps"][-1]["request"]["missing"] == "price"
+    assert first["steps"][-1]["tool"] == "_turn"
+    assert first["steps"][-1]["actor"] == "model"
+    assert first["steps"][-1]["pattern"] == "P5 Rules steer"
     cursor = len(first["state"].trace)
 
     final = bot.turn(first["state"], "40 CHF")
@@ -165,6 +189,31 @@ def test_missing_price_then_25_percent(setup_bot):
     assert final["steps"][0]["actor"] == "passenger"
     assert final["state"] is first["state"]
     assert [name for name, _ in kb.calls].count("_measure") == 1
+    turn = next(step for step in final["steps"] if step["tool"] == "_turn")
+    assert turn["receipt"]["answer"] == "40 CHF"
+    assert turn["receipt"]["question"] == turn["request"]["question"]
+
+
+def test_rules_steer_model_question_wording(setup_bot):
+    bot, _, answers, _ = setup_bot()
+    answers["What was your ticket price in CHF?"] = {"utterance": "Please tell me your ticket price in CHF."}
+    first = bot.turn(None, MISSING_PRICE)
+    assert first["reply"] == "Please tell me your ticket price in CHF."
+    assert first["steps"][-1]["request"]["question"] == "What was your ticket price in CHF?"
+    assert_final(bot.turn(first["state"], "40 CHF"), "entitled")
+
+
+@pytest.mark.parametrize("failure", [RuntimeError("question model unavailable"), {}])
+def test_failed_turn_falls_back_to_rule_question(setup_bot, failure):
+    bot, _, answers, _ = setup_bot()
+    question = "What was your ticket price in CHF?"
+    answers[question] = failure
+    first = bot.turn(None, MISSING_PRICE)
+    assert first["status"] == "asking" and first["reply"] == question
+    assert first["steps"][-1]["tool"] == "_ask"
+    assert first["steps"][-1]["request"]["attempt"] == 1
+    assert any(step["tool"] == "_turn" for step in first["steps"])
+    assert_final(bot.turn(first["state"], "40 CHF"), "entitled")
 
 
 @pytest.mark.parametrize("delay,status,fragment", [(45, "notEntitled", "60 minute threshold"),
@@ -173,6 +222,7 @@ def test_policy_thresholds(setup_bot, delay, status, fragment):
     bot, _, _, _ = setup_bot(delay=delay)
     result = bot.turn(None, FULL)
     assert_final(result, status)
+    assert ECHO_40 in result["reply"]
     assert fragment in result["reply"]
 
 
@@ -242,6 +292,36 @@ def test_fabricated_quote_is_rejected(setup_bot):
     assert_final(bot.turn(first["state"], "40 CHF"), "entitled")
 
 
+def test_price_number_must_occur_in_its_quote(setup_bot):
+    bot, _, answers, policy_calls = setup_bot()
+    answers[FULL] = travel_rows() + [row("price", 400, "40 CHF")]
+    first = bot.turn(None, FULL)
+    assert first["status"] == "asking" and "price" in first["reply"].lower()
+    sensor = next(step for step in first["steps"] if step["tool"] == "_llm")
+    assert sensor["receipt"]["rows"][-1]["quoteFound"] is True
+    assert sensor["receipt"]["rows"][-1]["valueQuoted"] is False
+    assert not policy_calls
+    final = bot.turn(first["state"], "40 CHF")
+    assert_final(final, "entitled")
+    assert ECHO_40 in final["reply"]
+    assert policy_calls == [{"delayMinutes": 70, "price": 40}]
+
+
+@pytest.mark.parametrize("value,quote", [("09:09", "09:09"), ("09:09", "08:09")])
+def test_choice_must_match_last_offered_departures(setup_bot, value, quote):
+    bot, kb, answers, policy_calls = setup_bot(ambiguous=True)
+    first = bot.turn(None, FULL)
+    answers[quote] = [row("choice", value, quote)]
+    second = bot.turn(first["state"], quote)
+    assert second["status"] == "asking", second
+    assert "08:09" in second["reply"] and "08:39" in second["reply"]
+    assert second["steps"][-1]["tool"] == "_ask"
+    assert not policy_calls
+    assert not any(request.get("choice") == value for name, request in kb.calls if name == "_measure")
+    answers["08:09"] = [row("choice", "08:09", "08:09")]
+    assert_final(bot.turn(second["state"], "08:09"), "entitled")
+
+
 def test_two_attempts_then_hand_on(setup_bot):
     bot, _, _, policy_calls = setup_bot()
     first = bot.turn(None, MISSING_PRICE)
@@ -264,7 +344,7 @@ def test_station_reask_and_latest_value_wins(setup_bot, station_status):
     assert "St. Gallen" in first["reply"]
     result = bot.turn(first["state"], "Winterthur")
     assert_final(result, "entitled")
-    assert "Winterthur to Zürich HB" in result["reply"]
+    assert "Winterthur → Zürich HB" in result["reply"]
     measurement = next(request for tool, request in kb.calls if tool == "_measure")
     assert measurement["origin"] == "sp_8506000"
 
@@ -293,7 +373,7 @@ def test_failed_tool_receipt_hands_on(setup_bot, tool):
         kb.fail_tool = tool
     result = bot.turn(None, FULL)
     assert_final(result, "handedOn")
-    assert "required tool failed" in result["reply"] and not policy_calls
+    assert result["reply"] == TECHNICAL_REPLY and not policy_calls
     assert any(step["tool"] == tool and not step["ok"] for step in result["steps"])
 
 
@@ -321,8 +401,8 @@ def test_two_tabs_do_not_mix_channels(setup_bot):
         final_a, final_b = [future.result(timeout=20) for future in futures]
     assert_final(final_a, "entitled")
     assert_final(final_b, "entitled")
-    assert "St. Gallen to" in final_a["reply"] and "CHF 10.00" in final_a["reply"]
-    assert "Winterthur to" in final_b["reply"] and "CHF 3.00" in final_b["reply"]
+    assert "St. Gallen →" in final_a["reply"] and "CHF 10.00" in final_a["reply"]
+    assert "Winterthur →" in final_b["reply"] and "CHF 3.00" in final_b["reply"]
     assert host.dialogue.CHANNEL is original_channel
 
 
@@ -369,7 +449,7 @@ def test_correction_while_answering_missing_slot_overrides_previous_value(setup_
     first = bot.turn(None, MISSING_PRICE)
     final = bot.turn(first["state"], text)
     assert_final(final, "entitled")
-    assert "Winterthur to Zürich HB" in final["reply"]
+    assert "Winterthur → Zürich HB" in final["reply"]
     assert next(p for t, p in kb.calls if t == "_measure")["origin"] == "sp_8506000"
 
 
@@ -380,7 +460,9 @@ def test_failed_policy_receipt_never_becomes_a_verdict(setup_bot):
     bot._policy_tools["_policy"] = failed
     result = bot.turn(None, FULL)
     assert_final(result, "handedOn")
-    assert "policy fixture unavailable" in result["reply"]
+    assert result["reply"] == TECHNICAL_REPLY
+    assert any("policy fixture unavailable" in step["receipt"].get("error", "")
+               for step in result["steps"])
     assert "25%" not in result["reply"]
 
 
@@ -417,6 +499,69 @@ def test_timeout_closes_worker_without_late_output(setup_bot, monkeypatch):
     assert result["state"].status == "failed"
 
 
+@pytest.mark.parametrize("notice", ["timeout", "asking"])
+def test_worker_finish_wins_over_late_timeout_or_asking(setup_bot, monkeypatch, notice):
+    bot, _, _, _ = setup_bot()
+    original_init = host.Conversation.__init__
+
+    def racing_init(conversation, *args, **kwargs):
+        original_init(conversation, *args, **kwargs)
+
+        def get_after_finish(*args, **kwargs):
+            conversation.worker.join(timeout=5)
+            assert not conversation.worker.is_alive()
+            assert conversation.done
+            if notice == "timeout":
+                raise host.queue.Empty
+            return "asking"
+
+        monkeypatch.setattr(conversation._notifications, "get", get_after_finish)
+
+    monkeypatch.setattr(host.Conversation, "__init__", racing_init)
+    result = bot.turn(None, FULL)
+    assert_final(result, "entitled")
+    conversation = result["state"]
+    assert not conversation._cancelled.is_set()
+    assert "timed out" not in str(result["steps"])
+    before = list(conversation.trace), list(conversation._output)
+    conversation._fail("late failure")
+    assert conversation.status == "entitled" and conversation.done
+    assert not conversation._cancelled.is_set()
+    assert (conversation.trace, conversation._output) == before
+
+
+def test_idle_timeout_cancels_worker_without_a_reply(setup_bot, monkeypatch):
+    bot, _, _, _ = setup_bot()
+    monkeypatch.setattr(host, "IDLE_SECONDS", 0.05)
+    first = bot.turn(None, MISSING_PRICE)
+    assert first["status"] == "asking"
+    conversation = first["state"]
+    output = list(conversation._output)
+    conversation.worker.join(timeout=5)
+    assert not conversation.worker.is_alive()
+    assert conversation.done and conversation._cancelled.is_set()
+    assert conversation.status == "failed"
+    assert conversation._output == output
+    assert not any(step["tool"] == "_say" for step in conversation.trace)
+    # Reusing an idle-cancelled state starts an independent run.
+    fresh = bot.turn(conversation, FULL)
+    assert_final(fresh, "entitled")
+    assert fresh["state"] is not conversation
+
+
+def test_explicit_cancel_wakes_waiting_worker_and_is_idempotent(setup_bot):
+    bot, _, _, _ = setup_bot()
+    first = bot.turn(None, MISSING_PRICE)
+    conversation = first["state"]
+    output = list(conversation._output)
+    conversation.cancel()
+    conversation.cancel()
+    conversation.worker.join(timeout=5)
+    assert not conversation.worker.is_alive()
+    assert conversation.done and conversation._cancelled.is_set()
+    assert conversation._output == output
+
+
 def test_env_loaded_once_and_existing_variables_are_preserved(setup_bot, monkeypatch):
     setup_bot()  # install the adapter modules; this test doesn't start an engine
     env_path = host._ROOT / "parser-test.env"
@@ -442,3 +587,98 @@ def test_env_loaded_once_and_existing_variables_are_preserved(setup_bot, monkeyp
     assert env["FRAMEX_MODEL_PROVIDER"] == "openai"
     assert env["FRAMEX_MODEL_EFFORT"] == "minimal"
     assert env["FRAMEX_MODEL_CACHE"] == "test-cache"
+
+
+def p3_steps(result):
+    phrase = [s for s in result["steps"] if s["tool"] == "_llm" and "mustSay" in s["request"]]
+    decision = [s for s in result["steps"] if s["actor"] == "rules" and s["tool"] == ""
+                and s["pattern"] == "P3 Translator"]
+    assert len(phrase) == 1 and len(decision) == 1, result["steps"]
+    assert phrase[0]["actor"] == "model" and phrase[0]["pattern"] == "P3 Translator"
+    return phrase[0], decision[0]
+
+
+def test_rule_text_is_default_without_phrasing_fixture(setup_bot):
+    bot, _, _, _ = setup_bot()
+    result = bot.turn(None, FULL)
+    assert_final(result, "entitled")
+    assert result["reply"] == RULE_25
+    phrase, decision = p3_steps(result)
+    assert not phrase["ok"] and phrase["request"]["mustSay"] == "25%"
+    assert phrase["request"]["document"] == RULE_25
+    assert decision["request"] == {"wording": "rules"}
+
+
+def test_p3_accepted_rephrase(setup_bot):
+    bot, _, answers, _ = setup_bot()
+    polite = (HEAD_25 + "Thank you for travelling with us: your train arrived 70 minutes late "
+              "(planned arrival 09:09, actual arrival 10:19).")
+    answers[RULE_25] = {"text": polite}
+    result = bot.turn(None, FULL)
+    assert_final(result, "entitled")
+    assert result["reply"] == polite
+    phrase, decision = p3_steps(result)
+    assert phrase["ok"] and phrase["receipt"]["saysDecision"] is True
+    check = next(s for s in result["steps"] if s["tool"] == "_numbersMatch")
+    assert check["ok"] and check["receipt"]["ok"] is True and check["pattern"] == "P3 Translator"
+    assert decision["request"] == {"wording": "model"}
+    say = next(s for s in result["steps"] if s["tool"] == "_say")
+    assert say["request"]["text"] == polite and say["request"]["status"] == "entitled"
+
+
+@pytest.mark.parametrize("changed,checked", [
+    # saysDecision true, but the amount changed: _numbersMatch rejects it.
+    ("You are entitled to 25% compensation: CHF 20.00 for IC 1, 08:09, 09:09, 10:19, 70 minutes.", True),
+    # The decision word is missing (25% became 50%): saysDecision rejects it.
+    ("You are entitled to 50% compensation: CHF 10.00 for IC 1, 08:09, 09:09, 10:19, 70 minutes.", False),
+    # A dropped number (the delay) is rejected too.
+    ("You are entitled to 25% compensation: CHF 10.00 for IC 1, 08:09, 09:09, 10:19.", True),
+])
+def test_p3_changed_fact_is_rejected_and_rule_text_used(setup_bot, changed, checked):
+    bot, _, answers, _ = setup_bot()
+    answers[RULE_25] = {"text": changed}
+    result = bot.turn(None, FULL)
+    assert_final(result, "entitled")
+    assert result["reply"] == RULE_25
+    phrase, decision = p3_steps(result)
+    assert phrase["ok"] and phrase["receipt"]["saysDecision"] is checked
+    checks = [s for s in result["steps"] if s["tool"] == "_numbersMatch"]
+    assert [s["receipt"]["ok"] for s in checks] == ([False] if checked else [])
+    assert decision["request"] == {"wording": "rules"}
+
+
+def test_p3_failed_call_keeps_rule_text_and_status(setup_bot):
+    bot, _, answers, _ = setup_bot()
+    answers[RULE_25] = RuntimeError("phrasing model unavailable")
+    result = bot.turn(None, FULL)
+    assert_final(result, "entitled")
+    assert result["reply"] == RULE_25 and "required tool failed" not in result["reply"]
+    phrase, decision = p3_steps(result)
+    assert not phrase["ok"] and "phrasing model unavailable" in phrase["receipt"]["error"]
+    assert decision["request"] == {"wording": "rules"}
+    assert not any(s["tool"] == "_numbersMatch" for s in result["steps"])
+
+
+def test_p3_cannot_move_or_change_the_rule_written_echo(setup_bot):
+    bot, _, answers, _ = setup_bot()
+    answers[RULE_25] = {"text": "Dear passenger, " + RULE_25}
+    result = bot.turn(None, FULL)
+    assert_final(result, "entitled")
+    check = next(step for step in result["steps"] if step["tool"] == "_numbersMatch")
+    assert check["request"]["requiredPrefix"] == HEAD_25
+    assert result["reply"] == RULE_25, check
+    assert check["receipt"]["prefixMatches"] is False
+
+
+def test_p3_phrases_hand_on_reply(setup_bot):
+    bot, _, answers, _ = setup_bot(measure_status="noTrain")
+    rule = ("Please contact SBB customer service. No matching train was found in the dated "
+            "knowledge base. I cannot give a refund verdict for this case.")
+    polite = ("We are sorry: no matching train was found in the dated knowledge base, so I cannot "
+              "give a refund verdict. Please contact SBB customer service.")
+    answers[rule] = {"text": polite}
+    result = bot.turn(None, FULL)
+    assert_final(result, "handedOn")
+    assert result["reply"] == polite
+    phrase, decision = p3_steps(result)
+    assert phrase["request"]["mustSay"] == "SBB" and decision["request"] == {"wording": "model"}

@@ -262,6 +262,8 @@ class RefundKB:
                 row = {"departure": _clock(r["D"]), "arrival": _clock(r["A"]), "changes": int(r["C"])}
                 label = self._label(self.events[event][0] if event in self.events else None)
                 if label: row["train"] = label
+                change = ", 1 change" if row["changes"] else ""
+                row["label"] = f'{row["departure"]} {label or "train"} (arrives {row["arrival"]}{change})'
                 key = (row["departure"], row["arrival"], row.get("train"), row["changes"])
                 if key in seen: continue
                 seen.add(key)

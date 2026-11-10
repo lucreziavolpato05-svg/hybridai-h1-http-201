@@ -18,6 +18,19 @@ FAILED_REPLY = ("Sorry, I could not check your journey right now. This is a tech
                 "not a decision about your refund. Please contact SBB customer service.")
 
 _ACTORS = {"knowledgeBase": "knowledge base", "kb": "knowledge base"}
+MAX_CONVERSATIONS = 50
+
+
+def _cancel(*conversations):
+    """Release each distinct conversation, including opaque test substitutes."""
+    seen = set()
+    for conversation in conversations:
+        if conversation is None or id(conversation) in seen:
+            continue
+        seen.add(id(conversation))
+        cancel = getattr(conversation, "cancel", None)
+        if cancel is not None:
+            cancel()
 
 
 def _step(raw: dict) -> Step:
@@ -49,7 +62,8 @@ class RefundBackend:
             out = self.bot.turn(conversation, message)
         except Exception as exc:  # never a verdict from a crash
             with self._lock:
-                self._conversations.pop(cid, None)
+                previous = self._conversations.pop(cid, None)
+                _cancel(previous, conversation)
             return Turn(FAILED_REPLY, FAILED, {},
                         [Step("P7 Competence", "host", "pipeline raised an error",
                               f"{type(exc).__name__}: {exc}")])
@@ -57,11 +71,19 @@ class RefundBackend:
         if status not in STATUSES:
             status = FAILED
         done = bool(out.get("done")) or status != "asking"
+        returned = out.get("state")
         with self._lock:
             if done:
-                self._conversations.pop(cid, None)
+                previous = self._conversations.pop(cid, None)
+                _cancel(previous, conversation, returned)
             else:
-                self._conversations[cid] = out.get("state")
+                previous = self._conversations.get(cid)
+                _cancel(*(old for old in (previous, conversation) if old is not returned))
+                self._conversations[cid] = returned
+                # Dict insertion order retains the oldest conversation first.
+                while len(self._conversations) > MAX_CONVERSATIONS:
+                    oldest = next(iter(self._conversations))
+                    _cancel(self._conversations.pop(oldest))
         new_state = {} if done else {"conversation": cid}
         reply = out.get("reply") or (FAILED_REPLY if status == FAILED else "")
         return Turn(reply, status, new_state, [_step(s) for s in out.get("steps", [])])

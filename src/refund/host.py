@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import queue
+import re
 import threading
 import types
 from importlib.resources import files
@@ -22,6 +23,7 @@ _ENV_LOADED: set[Path] = set()
 _ENV_LOCK = threading.Lock()
 _STOP = object()
 TURN_TIMEOUT = 180.0
+IDLE_SECONDS = 900
 _FINAL = {"entitled", "notEntitled", "handedOn", "failed"}
 
 
@@ -50,8 +52,8 @@ def _load_env(path: Path) -> None:
 
 def _source(text: str) -> str:
     policies = files("framex").joinpath("policies")
-    # P3 is optional. translator.fx uses `links`, rejected by the installed
-    # 0.4.4 engine. No translation is requested: P12 delivers the rule text.
+    # translator.fx is not loaded (this engine rejects its parameterised
+    # requests); refund.fx implements a minimal P3 Model as Translator itself.
     libraries = [policies.joinpath(name).read_text(encoding="utf-8")
                  for name in ("sensor.fx", "competence.fx")]
     program = Path(__file__).with_name("fx").joinpath("refund.fx").read_text(encoding="utf-8")
@@ -84,8 +86,37 @@ def _format(parameters: dict) -> tuple[dict, dict]:
     receipt fields (including CHF to two decimals). Templates live in refund.fx.
     """
     template = parameters["template"]
-    values = {key: value for key, value in parameters.items() if key != "template"}
-    return {"text": template.format_map(values)}, {"mode": "rule template; no model"}
+    values = {key: value for key, value in parameters.items()
+              if key not in {"template", "decisionTemplate", "prefixTemplate"}}
+    output = {"text": template.format_map(values)}
+    if "decisionTemplate" in parameters:
+        # The rule-authored decision word that a P3 phrasing must contain.
+        output["decision"] = parameters["decisionTemplate"].format_map(values)
+    if "prefixTemplate" in parameters:
+        output["prefix"] = parameters["prefixTemplate"].format_map(values)
+    return output, {"mode": "rule template; no model"}
+
+
+_NUMBER = re.compile(r"\d+(?:[.,:]\d+)*")
+
+
+def _numbers_match(parameters: dict) -> tuple[dict, dict]:
+    """Lexical P3 measurement: does the candidate keep exactly the rule numbers?
+
+    ok is true only when the candidate's set of number tokens (CHF amounts,
+    times, percentages, minutes, dates) equals the rule text's set: no number is
+    added, changed or dropped. A rule-authored prefix must also remain verbatim
+    at the start of the candidate. The rules decide what to do with these facts.
+    """
+    candidate, reference = parameters["candidate"], parameters["reference"]
+    if not isinstance(candidate, str) or not isinstance(reference, str):
+        raise ValueError("candidate and reference must be texts")
+    found, expected = set(_NUMBER.findall(candidate)), set(_NUMBER.findall(reference))
+    prefix_matches = candidate.startswith(parameters.get("requiredPrefix", ""))
+    return ({"ok": found == expected and prefix_matches, "prefixMatches": prefix_matches,
+             "added": "; ".join(sorted(found - expected)),
+             "dropped": "; ".join(sorted(expected - found))},
+            {"mode": "lexical number check; no model"})
 
 
 def _step(actor="host", tool="", pattern="", summary="", request=None,
@@ -104,10 +135,10 @@ class _Channel(dialogue.Channel):
         self.owner = owner
 
     def say(self, text):
-        if self.owner._cancelled.is_set():
-            raise _Closed("conversation closed")
-        self.transcript.append({"speaker": "bot", "text": text})
         with self.owner._lock:
+            if self.owner._cancelled.is_set():
+                raise _Closed("conversation closed")
+            self.transcript.append({"speaker": "bot", "text": text})
             self.owner._output.append(text)
 
 
@@ -121,11 +152,12 @@ class Conversation:
     def __init__(self, bot: RefundBot, text: str):
         self.bot = bot
         self.trace: list[dict] = []
-        self.status = "asking"
-        self.done = False
+        self._lock = threading.RLock()
+        with self._lock:
+            self.status = "asking"
+            self.done = False
         self.inbound: queue.Queue = queue.Queue()
         self._notifications: queue.Queue = queue.Queue()
-        self._lock = threading.RLock()
         self._turn_lock = threading.Lock()
         self._cancelled = threading.Event()
         self._output: list[str] = []
@@ -143,13 +175,27 @@ class Conversation:
         if self._cancelled.is_set():
             raise _Closed("conversation closed")
         tool, request = self._pending or ("_ask", {})
-        self._append(_step("rules", tool, "P5 Rules steer",
+        self._append(_step("model" if tool == "_turn" else "rules", tool, "P5 Rules steer",
                            request.get("question", "Waiting for passenger input"), request))
         self._notifications.put("asking")
-        answer = self.inbound.get()
+        try:
+            answer = self.inbound.get(timeout=IDLE_SECONDS)
+        except queue.Empty:
+            self.cancel()
+            raise _Closed("conversation idle timeout") from None
         if answer is _STOP or self._cancelled.is_set():
             raise _Closed("conversation closed")
         return answer
+
+    def cancel(self):
+        """Close an abandoned conversation and wake its worker without a reply."""
+        with self._lock:
+            if self.done:
+                return
+            self._cancelled.set()
+            self.status, self.done = "failed", True
+            self.inbound.put(_STOP)
+            self._notifications.put("done")
 
     def _sink(self, event):
         if self._cancelled.is_set():
@@ -161,6 +207,13 @@ class Conversation:
                                summary=f'Workflow: {event["workflow"]}', receipt=event))
             return
         tool = event["tool"]
+        parameters = event.get("parameters", {})
+        if tool == "_say" and "wording" in parameters:
+            # The rules' P3 acceptance decision, made from the receipts above.
+            accepted = parameters["wording"] == "model"
+            self._append(_step("rules", pattern="P3 Translator", summary=(
+                "Rules accepted the model's phrasing" if accepted else
+                "Rules kept the rule-written text"), request={"wording": parameters["wording"]}))
         actor, pattern = {
             "_llm": ("model", "P1 Sensor"),
             "_turn": ("model", "P5 Rules steer"),
@@ -171,14 +224,22 @@ class Conversation:
             "_policy": ("rules", "P12 Model selects, rules write"),
             "_query": ("rules", "P5 Rules steer"),
             "_format": ("rules", "P12 Model selects, rules write"),
+            "_numbersMatch": ("rules", "P3 Translator"),
         }.get(tool, ("host", ""))
+        phrasing = tool == "_llm" and "mustSay" in parameters
+        if phrasing:
+            actor, pattern = "model", "P3 Translator"
         output = event.get("output", {})
         ok = event.get("status") == "succeeded"
         if tool == "_say" and event.get("parameters", {}).get("status") == "handedOn":
             pattern = "P7 Division by competence"
         summary = (output.get("text") or output.get("question") or
                    output.get("status") or f"{tool} receipt") if ok else event.get("error", "Tool failed")
-        if ok and tool == "_llm":
+        if ok and phrasing:
+            summary = f'Phrased the reply (saysDecision: {output.get("saysDecision")})'
+        elif ok and tool == "_numbersMatch":
+            summary = f'Numbers match the rule text: {output.get("ok")}'
+        elif ok and tool == "_llm":
             summary = f'Read {len(output.get("rows", []))} proposed travel facts'
         elif ok and tool == "_query":
             summary = f'Sensor snapshot: {output.get("status", "unknown")}'
@@ -189,11 +250,12 @@ class Conversation:
         if event.get("evidence"):
             receipt["evidence"] = event["evidence"]
         self._append(_step(actor, tool, pattern, str(summary),
-                           dict(event.get("parameters", {})), receipt, ok))
+                           dict(parameters), receipt, ok))
 
     def _adapters(self):
         adapters = {**_dialogue_tools(self.channel), **self.bot._kb_tools,
-                    **self.bot._policy_tools, "_format": _format}
+                    **self.bot._policy_tools, "_format": _format,
+                    "_numbersMatch": _numbers_match}
         measure = adapters["_measure"]
 
         def measured(parameters):
@@ -209,6 +271,9 @@ class Conversation:
                 if self._cancelled.is_set():
                     raise _Closed("conversation closed")
                 self._pending = (name, dict(parameters))
+                if name == "_say":
+                    # wording is trace metadata for the P3 step, not for the channel.
+                    parameters = {k: v for k, v in parameters.items() if k != "wording"}
                 output, evidence = original(parameters)
                 if name == "_say":
                     output = dict(output, status=parameters["status"])
@@ -227,7 +292,7 @@ class Conversation:
                 self._fail("The final reply could not be delivered")
                 return
             with self._lock:
-                if not self._cancelled.is_set():
+                if not self.done and not self._cancelled.is_set():
                     self.status, self.done = result["status"], True
         except Exception as exc:
             if not self._cancelled.is_set():
@@ -237,7 +302,11 @@ class Conversation:
 
     def _fail(self, error):
         with self._lock:
+            if self.done:
+                return
+            self._cancelled.set()
             self.status, self.done = "failed", True
+            self.inbound.put(_STOP)
             self._output.append("I could not complete the check. Please contact SBB customer service.")
             self.trace.append(_step(summary=error, receipt={"error": error}, ok=False))
 
@@ -279,12 +348,13 @@ class RefundBot:
                 conversation.inbound.put(text)
             try:
                 notice = conversation._notifications.get(timeout=TURN_TIMEOUT)
-                if notice == "asking":
-                    conversation.status = "asking"
+                with conversation._lock:
+                    if not conversation.done and notice == "asking":
+                        conversation.status = "asking"
             except queue.Empty:
-                conversation._cancelled.set()
-                conversation.inbound.put(_STOP)
-                conversation._fail(f"Refund check timed out after {TURN_TIMEOUT:g} seconds")
+                with conversation._lock:
+                    if not conversation.done:
+                        conversation._fail(f"Refund check timed out after {TURN_TIMEOUT:g} seconds")
             with conversation._lock:
                 return {"reply": "\n\n".join(conversation._output[output_start:]),
                         "status": conversation.status, "steps": list(conversation.trace[start:]),

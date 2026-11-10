@@ -4,6 +4,14 @@ from chat.backend import Step, Turn
 from refund.chat_backend import RefundBackend
 
 
+class CancellableConversation:
+    def __init__(self):
+        self.cancel_calls = 0
+
+    def cancel(self):
+        self.cancel_calls += 1
+
+
 class FakeBot:
     def __init__(self, *results):
         self.results = iter(results)
@@ -82,7 +90,8 @@ def test_unknown_status_becomes_failed():
 
 
 def test_bot_exception_returns_failed_reply_and_forgets_conversation():
-    bot = FakeBot(output(object()), RuntimeError("bot broke"), output(object()))
+    conversation = CancellableConversation()
+    bot = FakeBot(output(conversation), RuntimeError("bot broke"), output(object()))
     backend = RefundBackend(bot)
     first = backend.respond("start", {})
     turn = backend.respond("crash", first.state)
@@ -90,8 +99,47 @@ def test_bot_exception_returns_failed_reply_and_forgets_conversation():
     assert turn.status == "failed"
     assert turn.reply.strip()
     assert turn.state == {}
+    assert conversation.cancel_calls == 1
     backend.respond("retry stale id", first.state)
     assert bot.calls[2][0] is None
+
+
+def test_replaced_conversation_is_cancelled():
+    old, new = CancellableConversation(), CancellableConversation()
+    backend = RefundBackend(FakeBot(output(old), output(new)))
+    first = backend.respond("start", {})
+    second = backend.respond("replace", first.state)
+    assert second.state == first.state
+    assert old.cancel_calls == 1 and new.cancel_calls == 0
+    assert backend._conversations[first.state["conversation"]] is new
+
+
+@pytest.mark.parametrize("status", ["entitled", "notEntitled", "handedOn", "failed", "invalid"])
+def test_forgetting_conversations_cancels_both_old_and_returned_states(status):
+    old, returned = CancellableConversation(), CancellableConversation()
+    backend = RefundBackend(FakeBot(output(old), output(returned, status=status)))
+    first = backend.respond("start", {})
+    finished = backend.respond("finish", first.state)
+    assert finished.state == {} and not backend._conversations
+    assert old.cancel_calls == 1 and returned.cancel_calls == 1
+
+
+def test_cap_cancels_oldest_conversation_and_stale_id_starts_fresh():
+    conversations = [CancellableConversation() for _ in range(52)]
+    bot = FakeBot(*(output(conversation) for conversation in conversations))
+    backend = RefundBackend(bot)
+    first = backend.respond("start oldest", {})
+    for _ in range(50):
+        backend.respond("start another tab", {})
+    assert len(backend._conversations) == 50
+    assert conversations[0].cancel_calls == 1
+    assert all(conversation.cancel_calls == 0 for conversation in conversations[1:])
+    assert first.state["conversation"] not in backend._conversations
+    fresh = backend.respond("reuse evicted id", first.state)
+    assert bot.calls[-1][0] is None
+    assert fresh.state != first.state
+    assert len(backend._conversations) == 50
+    assert conversations[1].cancel_calls == 1
 
 
 def test_step_maps_actor_summary_and_tool_payload():
