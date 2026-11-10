@@ -1,5 +1,14 @@
 # Fact-safe refund assistant (Hybrid AI, Hackathon 2)
 
+## Team
+
+| Member | Role |
+| --- | --- |
+| Egor Levashenko | Developer |
+| Ethan | Developer |
+| Wee Siang | Domain Expert |
+| Lucrezia Volpato, Ethan | Auditor |
+
 A passenger describes a delayed SBB train journey in their own words. A language
 model (GPT-5 mini) turns the words into checked facts and questions; a FrameX
 knowledge base built from SBB data of **Saturday 7 November 2026** measures the
