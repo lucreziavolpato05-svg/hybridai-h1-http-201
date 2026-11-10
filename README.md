@@ -103,3 +103,27 @@ pipeline is connected. Its known cases (`tests/data/refund_cases.json`) come fro
 the rules alone (`46-refunds.fx` on FrameX 0.5.0), never from the model.
 
 Coding tools used: Claude Code (Claude Opus 5.5). Language model in the system: GPT-5 mini.
+
+### Refund pipeline (FrameX)
+
+Run (bash; PowerShell below):
+
+```bash
+REFUND_BACKEND=refund.chat_backend:RefundBackend uv run python src/chat/app.py
+```
+```powershell
+$env:REFUND_BACKEND="refund.chat_backend:RefundBackend"; uv run python src/chat/app.py
+```
+
+- `.env` with `OPENAI_API_KEY` (never committed).
+- Model answers are cached in `recorded/` for offline replay; record new ones with `uv run python scripts/record_demo.py --live`.
+- Tests: `uv run pytest -q tests/test_refund_flow.py tests/test_refund_chat_backend.py tests/test_refund_policy.py tests/test_refund_kb.py`
+- P1 Sensor: the model extracts slots, accepted only if the quote is in the passenger's text.
+- P3 Translator: the model phrases the rule verdict; accepted only if the decision word and the numbers match.
+- P5 Rules steer: the rules decide what to ask, the model words it (max 2 per fact).
+- P7 Competence: what the rules cannot settle is handed on to SBB customer service.
+- P12 Rules write: the verdict sentence comes from KB and policy receipts.
+
+Details: [docs/refund-assistant.md](docs/refund-assistant.md).
+
+Tools & models: coding agents Claude Code (Claude Opus 5.5; subagents on Claude Opus and Sonnet), OpenAI Codex (gpt-6.1-sol, gpt-6.1-terra, default model); in-system language model GPT-5 mini.
