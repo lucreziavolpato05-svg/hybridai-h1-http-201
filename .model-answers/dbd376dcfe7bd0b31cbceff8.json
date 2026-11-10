@@ -1,5 +1,5 @@
 {
- "recorded_at": "2026-11-10T16:23:48Z",
+ "recorded_at": "2026-11-10T16:31:03Z",
  "provider": "openai",
  "model": "gpt-5-mini",
  "messages": [
@@ -17,21 +17,21 @@
    {
     "slot": "price",
     "value": 46,
-    "quote": "CHF 46"
+    "quote": "CHF 46."
    }
   ]
  },
  "envelope": {
-  "id": "chatcmpl-EiivO41wVv6dEI5ppFnFS8iSSogBO",
+  "id": "chatcmpl-Eij2OVENsWCIXgZmdcYn9DJ1VKARS",
   "object": "chat.completion",
-  "created": 1794327830,
+  "created": 1794328264,
   "model": "gpt-5-mini-2025-08-07",
   "choices": [
    {
     "index": 0,
     "message": {
      "role": "assistant",
-     "content": "{\"rows\":[{\"slot\":\"price\",\"value\":46,\"quote\":\"CHF 46\"}]}",
+     "content": "{\"rows\":[{\"slot\":\"price\",\"value\":46,\"quote\":\"CHF 46.\"}]}",
      "refusal": null,
      "annotations": []
     },
@@ -40,8 +40,8 @@
   ],
   "usage": {
    "prompt_tokens": 219,
-   "completion_tokens": 28,
-   "total_tokens": 247,
+   "completion_tokens": 29,
+   "total_tokens": 248,
    "prompt_tokens_details": {
     "cached_tokens": 0,
     "audio_tokens": 0

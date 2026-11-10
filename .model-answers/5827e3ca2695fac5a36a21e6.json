@@ -1,5 +1,5 @@
 {
- "recorded_at": "2026-11-10T16:23:19Z",
+ "recorded_at": "2026-11-10T16:28:48Z",
  "provider": "openai",
  "model": "gpt-5-mini",
  "messages": [
@@ -32,21 +32,21 @@
    {
     "slot": "time",
     "value": "08:00",
-    "quote": "8 o'clock"
+    "quote": "at 8 o'clock"
    }
   ]
  },
  "envelope": {
-  "id": "chatcmpl-Eiiut0xzngE1SQbpMFsXdbRylqzNJ",
+  "id": "chatcmpl-Eij0CoTEWWJX7WbHzAzE4l5ZpuFbC",
   "object": "chat.completion",
-  "created": 1794327799,
+  "created": 1794328128,
   "model": "gpt-5-mini-2025-08-07",
   "choices": [
    {
     "index": 0,
     "message": {
      "role": "assistant",
-     "content": "{\"rows\":[{\"slot\":\"origin\",\"value\":\"St. Gallen\",\"quote\":\"St. Gallen\"},{\"slot\":\"destination\",\"value\":\"Zürich HB\",\"quote\":\"Zürich HB\"},{\"slot\":\"date\",\"value\":\"2026-11-07\",\"quote\":\"On 7 November\"},{\"slot\":\"time\",\"value\":\"08:00\",\"quote\":\"8 o'clock\"}]}",
+     "content": "{\"rows\":[{\"slot\":\"origin\",\"value\":\"St. Gallen\",\"quote\":\"St. Gallen\"},{\"slot\":\"destination\",\"value\":\"Zürich HB\",\"quote\":\"Zürich HB\"},{\"slot\":\"date\",\"value\":\"2026-11-07\",\"quote\":\"On 7 November\"},{\"slot\":\"time\",\"value\":\"08:00\",\"quote\":\"at 8 o'clock\"}]}",
      "refusal": null,
      "annotations": []
     },
@@ -55,8 +55,8 @@
   ],
   "usage": {
    "prompt_tokens": 246,
-   "completion_tokens": 86,
-   "total_tokens": 332,
+   "completion_tokens": 88,
+   "total_tokens": 334,
    "prompt_tokens_details": {
     "cached_tokens": 0,
     "audio_tokens": 0

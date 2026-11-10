@@ -24,6 +24,11 @@ CONVERSATIONS = [
     [EXAMPLE.replace("St. Gallen", "Hogwarts"), "My ticket cost CHF 46.", "the first one"],
     ["On 7 November I was going from St. Gallen at 8 o'clock. "
      "My train was late. Do I get a refund?", "My ticket cost CHF 46."],
+    # Real delayed case in the 07.11.2026 data: IR75 cancelled, 65 min at Luzern -> 25 %.
+    ["On 7 November I took the train from Zürich HB to Luzern at 06:35, my ticket cost CHF 26. "
+     "It arrived much too late. Can I get money back?", "the IR75 at 06:35", "the IR75 at 06:35"],
+    ["On 7 November I took the train from Zürich HB to Luzern at 06:35, my ticket cost CHF 12. "
+     "Refund?", "the IR75 at 06:35", "the IR75 at 06:35"],
 ]
 
 

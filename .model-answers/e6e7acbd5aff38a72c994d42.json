@@ -1,5 +1,5 @@
 {
- "recorded_at": "2026-11-10T16:23:50Z",
+ "recorded_at": "2026-11-10T16:29:21Z",
  "provider": "openai",
  "model": "gpt-5-mini",
  "messages": [
@@ -16,9 +16,9 @@
   "utterance": "Please give the exact origin station name for 'Hogwarts'."
  },
  "envelope": {
-  "id": "chatcmpl-EiivPH2OMo4mlL2IJfTA2wsNZzY80",
+  "id": "chatcmpl-Eij0lorQQPTMKtrSSbm3n7DrZV7Gm",
   "object": "chat.completion",
-  "created": 1794327831,
+  "created": 1794328163,
   "model": "gpt-5-mini-2025-08-07",
   "choices": [
    {

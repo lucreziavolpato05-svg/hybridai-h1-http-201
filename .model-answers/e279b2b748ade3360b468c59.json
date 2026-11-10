@@ -1,5 +1,5 @@
 {
- "recorded_at": "2026-11-10T16:23:57Z",
+ "recorded_at": "2026-11-10T16:29:29Z",
  "provider": "openai",
  "model": "gpt-5-mini",
  "messages": [
@@ -16,16 +16,16 @@
   "utterance": "Which station were you travelling to?"
  },
  "envelope": {
-  "id": "chatcmpl-EiivW9YUHhxOguCtMmdlE84NXUkiH",
+  "id": "chatcmpl-Eij0sxqvWRXLODNBNGNysWzg7jax6",
   "object": "chat.completion",
-  "created": 1794327838,
+  "created": 1794328170,
   "model": "gpt-5-mini-2025-08-07",
   "choices": [
    {
     "index": 0,
     "message": {
      "role": "assistant",
-     "content": "{\"utterance\": \"Which station were you travelling to?\"}",
+     "content": "{\"utterance\":\"Which station were you travelling to?\"}",
      "refusal": null,
      "annotations": []
     },
@@ -34,8 +34,8 @@
   ],
   "usage": {
    "prompt_tokens": 219,
-   "completion_tokens": 22,
-   "total_tokens": 241,
+   "completion_tokens": 21,
+   "total_tokens": 240,
    "prompt_tokens_details": {
     "cached_tokens": 0,
     "audio_tokens": 0
