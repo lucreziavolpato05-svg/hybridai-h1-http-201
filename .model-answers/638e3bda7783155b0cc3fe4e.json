@@ -9,7 +9,7 @@
   },
   {
    "role": "user",
-   "content": "{\"document\": \"On 7 November I took the train from Zürich HB to Luzern at 06:35, my ticket cost CHF 26. It arrived much too late. Can I get money back?\"}"
+   "content": "{\"document\": \"On 7 November I took the train from Z\u00fcrich HB to Luzern at 06:35, my ticket cost CHF 26. It arrived much too late. Can I get money back?\"}"
   }
  ],
  "output": {
@@ -21,8 +21,8 @@
    },
    {
     "slot": "origin",
-    "value": "Zürich HB",
-    "quote": "from Zürich HB"
+    "value": "Z\u00fcrich HB",
+    "quote": "from Z\u00fcrich HB"
    },
    {
     "slot": "destination",
@@ -51,7 +51,7 @@
     "index": 0,
     "message": {
      "role": "assistant",
-     "content": "{\n  \"rows\": [\n    {\n      \"slot\": \"date\",\n      \"value\": \"2026-11-07\",\n      \"quote\": \"On 7 November\"\n    },\n    {\n      \"slot\": \"origin\",\n      \"value\": \"Zürich HB\",\n      \"quote\": \"from Zürich HB\"\n    },\n    {\n      \"slot\": \"destination\",\n      \"value\": \"Luzern\",\n      \"quote\": \"to Luzern\"\n    },\n    {\n      \"slot\": \"time\",\n      \"value\": \"06:35\",\n      \"quote\": \"at 06:35\"\n    },\n    {\n      \"slot\": \"price\",\n      \"value\": 26,\n      \"quote\": \"my ticket cost CHF 26\"\n    }\n  ]\n}",
+     "content": "{\n  \"rows\": [\n    {\n      \"slot\": \"date\",\n      \"value\": \"2026-11-07\",\n      \"quote\": \"On 7 November\"\n    },\n    {\n      \"slot\": \"origin\",\n      \"value\": \"Z\u00fcrich HB\",\n      \"quote\": \"from Z\u00fcrich HB\"\n    },\n    {\n      \"slot\": \"destination\",\n      \"value\": \"Luzern\",\n      \"quote\": \"to Luzern\"\n    },\n    {\n      \"slot\": \"time\",\n      \"value\": \"06:35\",\n      \"quote\": \"at 06:35\"\n    },\n    {\n      \"slot\": \"price\",\n      \"value\": 26,\n      \"quote\": \"my ticket cost CHF 26\"\n    }\n  ]\n}",
      "refusal": null,
      "annotations": []
     },
