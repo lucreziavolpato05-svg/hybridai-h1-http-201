@@ -6,6 +6,10 @@ The UI passes a plain dict back each turn (and copies it shallowly), so the
 dict carries only a conversation id. The live FrameX conversation (a worker
 thread blocked on the passenger's next answer) stays here, keyed by that id:
 two browser tabs get two ids and never share a conversation.
+
+While asking, state["form"] describes the rules' question for a form widget
+({slot, kind, label, options|min}). The UI answers it by setting
+state["formAnswer"] = {"slot", "value"} and sending the chosen label as text.
 """
 from __future__ import annotations
 
@@ -58,8 +62,11 @@ class RefundBackend:
             conversation = self._conversations.get(cid) if cid else None
         if conversation is None:
             cid = uuid.uuid4().hex
+        # A UI form answer to the pending question goes to the rules as a receipt.
+        form = (state or {}).get("formAnswer")
+        kwargs = {"form": form} if conversation is not None and isinstance(form, dict) else {}
         try:
-            out = self.bot.turn(conversation, message)
+            out = self.bot.turn(conversation, message, **kwargs)
         except Exception as exc:  # never a verdict from a crash
             with self._lock:
                 previous = self._conversations.pop(cid, None)
@@ -85,5 +92,7 @@ class RefundBackend:
                     oldest = next(iter(self._conversations))
                     _cancel(self._conversations.pop(oldest))
         new_state = {} if done else {"conversation": cid}
+        if not done and isinstance(out.get("form"), dict):
+            new_state["form"] = out["form"]
         reply = out.get("reply") or (FAILED_REPLY if status == FAILED else "")
         return Turn(reply, status, new_state, [_step(s) for s in out.get("steps", [])])

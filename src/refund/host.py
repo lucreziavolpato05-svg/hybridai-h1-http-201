@@ -7,6 +7,7 @@ implements the compensation policy.
 
 from __future__ import annotations
 
+import math
 import os
 import queue
 import re
@@ -129,6 +130,24 @@ class _Closed(RuntimeError):
     pass
 
 
+def _form_answer(form) -> dict | None:
+    """A well-formed UI form answer {slot, value}, or None (then the text is sensed).
+
+    Only the transport shape is checked here: whether the slot was asked and
+    whether the value is admissible is decided by the rules in refund.fx.
+    """
+    if not isinstance(form, dict):
+        return None
+    slot, value = form.get("slot"), form.get("value")
+    if not isinstance(slot, str) or isinstance(value, bool):
+        return None
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if not isinstance(value, (str, int, float)):
+        return None
+    return {"slot": slot, "value": value}
+
+
 class _Channel(dialogue.Channel):
     def __init__(self, owner):
         super().__init__(read=owner._read)
@@ -162,6 +181,8 @@ class Conversation:
         self._cancelled = threading.Event()
         self._output: list[str] = []
         self._pending: tuple[str, dict] | None = None
+        self._form: dict | None = None
+        self._rows: list = []
         self.channel = _Channel(self)
         self.channel.transcript.append({"speaker": "user", "text": text})
         self.worker = threading.Thread(target=self._run, args=(text,), daemon=True,
@@ -185,7 +206,32 @@ class Conversation:
             raise _Closed("conversation idle timeout") from None
         if answer is _STOP or self._cancelled.is_set():
             raise _Closed("conversation closed")
+        if isinstance(answer, tuple):  # (label text, form answer) from the UI
+            answer, self._form = answer
         return answer
+
+    def form(self) -> dict | None:
+        """The pending question as a UI form, from the rules' _turn/_ask request.
+
+        slot and kind are rule fields (missing, formKind); a choice lists the
+        rows of the last _measure receipt. None when nothing is being asked.
+        """
+        with self._lock:
+            if self.done or not self._pending:
+                return None
+            tool, request = self._pending
+            if tool not in {"_ask", "_turn"} or "missing" not in request:
+                return None
+            kind = request.get("formKind", "text")
+            form = {"slot": request["missing"], "kind": kind,
+                    "label": request.get("question", "")}
+            if kind == "choice":
+                form["options"] = [{"value": row["departure"],
+                                    "label": row.get("label", row["departure"])}
+                                   for row in self._rows if "departure" in row]
+            elif kind == "number":
+                form["min"] = 0
+            return form
 
     def cancel(self):
         """Close an abandoned conversation and wake its worker without a reply."""
@@ -231,6 +277,10 @@ class Conversation:
             actor, pattern = "model", "P3 Translator"
         output = event.get("output", {})
         ok = event.get("status") == "succeeded"
+        if ok and tool == "_measure":
+            with self._lock:
+                self._rows = [dict(row) for row in output.get("rows", [])
+                              if isinstance(row, dict)]
         if tool == "_say" and event.get("parameters", {}).get("status") == "handedOn":
             pattern = "P7 Division by competence"
         summary = (output.get("text") or output.get("question") or
@@ -271,12 +321,20 @@ class Conversation:
                 if self._cancelled.is_set():
                     raise _Closed("conversation closed")
                 self._pending = (name, dict(parameters))
+                self._form = None
                 if name == "_say":
                     # wording is trace metadata for the P3 step, not for the channel.
                     parameters = {k: v for k, v in parameters.items() if k != "wording"}
                 output, evidence = original(parameters)
                 if name == "_say":
                     output = dict(output, status=parameters["status"])
+                elif "answer" in output:
+                    # Every answer receipt says whether it came from a UI form;
+                    # the rules sense only form false and validate form values.
+                    form, self._form = self._form, None
+                    output = dict(output, form=form is not None)
+                    if form is not None:
+                        output.update(formSlot=form["slot"], formValue=form["value"])
                 return output, evidence
 
             adapters[name] = bound
@@ -325,7 +383,9 @@ class RefundBot:
         self._kb_tools = kb_tools(self.kb)
         self._policy_tools = dict(POLICY_TOOLS)
 
-    def turn(self, state, text: str) -> dict:
+    def turn(self, state, text: str, *, form=None) -> dict:
+        """One passenger message. form={"slot", "value"} answers the pending
+        question from a UI form: the rules receive it without a model call."""
         if not isinstance(text, str):
             raise TypeError("text must be a string")
         if state is not None and not isinstance(state, Conversation):
@@ -334,6 +394,8 @@ class RefundBot:
         conversation = Conversation(self, text) if fresh else state
         if conversation.bot is not self:
             raise ValueError("state belongs to another RefundBot")
+        # A form answers a pending question; a new conversation is always sensed.
+        answer = None if fresh else _form_answer(form)
         with conversation._turn_lock:
             # A second request from the same tab may have queued behind a turn
             # that has just finished. It too must start a fresh conversation.
@@ -341,11 +403,17 @@ class RefundBot:
                 return self.turn(None, text)
             with conversation._lock:
                 start, output_start = len(conversation.trace), len(conversation._output)
-            conversation._append(_step("passenger", summary=text, request={"text": text}))
+            if answer is None:
+                conversation._append(_step("passenger", summary=text, request={"text": text}))
+            else:
+                conversation._append(_step(
+                    "passenger", pattern="P5 Rules steer",
+                    summary=f'Form answer: {answer["slot"]} = {answer["value"]} (no model call)',
+                    request={"text": text, "form": answer}))
             if fresh:
                 conversation.worker.start()
             else:
-                conversation.inbound.put(text)
+                conversation.inbound.put(text if answer is None else (text, answer))
             try:
                 notice = conversation._notifications.get(timeout=TURN_TIMEOUT)
                 with conversation._lock:
@@ -356,6 +424,11 @@ class RefundBot:
                     if not conversation.done:
                         conversation._fail(f"Refund check timed out after {TURN_TIMEOUT:g} seconds")
             with conversation._lock:
-                return {"reply": "\n\n".join(conversation._output[output_start:]),
-                        "status": conversation.status, "steps": list(conversation.trace[start:]),
-                        "done": conversation.done, "state": conversation}
+                out = {"reply": "\n\n".join(conversation._output[output_start:]),
+                       "status": conversation.status, "steps": list(conversation.trace[start:]),
+                       "done": conversation.done, "state": conversation}
+                if conversation.status == "asking" and not conversation.done:
+                    asked = conversation.form()
+                    if asked is not None:
+                        out["form"] = asked
+                return out

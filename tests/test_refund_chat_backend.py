@@ -16,18 +16,49 @@ class FakeBot:
     def __init__(self, *results):
         self.results = iter(results)
         self.calls = []
+        self.kwargs = []
 
-    def turn(self, state, text):
+    def turn(self, state, text, **kwargs):
         self.calls.append((state, text))
+        self.kwargs.append(kwargs)
         result = next(self.results)
         if isinstance(result, Exception):
             raise result
         return result
 
 
-def output(state=None, status="asking", done=False, steps=None):
-    return {"reply": "A reply", "status": status, "steps": steps or [],
-            "done": done, "state": state}
+def output(state=None, status="asking", done=False, steps=None, form=None):
+    result = {"reply": "A reply", "status": status, "steps": steps or [],
+              "done": done, "state": state}
+    if form is not None:
+        result["form"] = form
+    return result
+
+
+CHOICE_FORM = {"slot": "choice", "kind": "choice", "label": "Several trains match your journey. Which one?",
+               "options": [{"value": "07:58", "label": "07:58 IC IC5 (arrives 08:58)"}]}
+
+
+def test_form_is_offered_in_state_and_form_answer_is_passed_through():
+    conversation = object()
+    bot = FakeBot(output(conversation, form=CHOICE_FORM), output(conversation, "entitled", True,
+                                                                 form=CHOICE_FORM))
+    backend = RefundBackend(bot)
+    first = backend.respond("hello", {})
+    assert first.state == {"conversation": first.state["conversation"], "form": CHOICE_FORM}
+    assert bot.kwargs[0] == {}  # no form answer on a new conversation
+    answer = {"slot": "choice", "value": "07:58"}
+    final = backend.respond("07:58 IC IC5 (arrives 08:58)", dict(first.state, formAnswer=answer))
+    assert bot.calls[1] == (conversation, "07:58 IC IC5 (arrives 08:58)")
+    assert bot.kwargs[1] == {"form": answer}
+    assert final.state == {}  # no form once the conversation is finished
+
+
+def test_form_answer_without_live_conversation_is_not_passed():
+    bot = FakeBot(output(object()))
+    RefundBackend(bot).respond("07:58", {"conversation": "stale", "formAnswer": {"slot": "choice",
+                                                                                "value": "07:58"}})
+    assert bot.calls[0][0] is None and bot.kwargs[0] == {}
 
 
 def test_first_turn_and_shallow_copied_state_preserve_opaque_conversation():
