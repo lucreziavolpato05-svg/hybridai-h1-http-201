@@ -151,14 +151,14 @@ RESET_LIGHT = _icon("<path d='M3 12a9 9 0 1 0 3-6.7L3 8'/><path d='M3 3v5h5'/>",
 RESET_DARK = _icon("<path d='M3 12a9 9 0 1 0 3-6.7L3 8'/><path d='M3 3v5h5'/>", "#ddd")
 
 CSS = """
-.sbb-diagram, .status-pill, #sbb-header, .card {
+.sbb-diagram, .status-pill, #sbb-header, .card, #form-card {
   --sbb-red: #EB0000; --sbb-red-dark: #C60018;
   --dg-bg: #FFFFFF; --dg-node: #F7F7F8; --dg-stroke: #E1E1E4; --dg-text: #18181B;
   --dg-sub: #71717A; --dg-edge: #D4D4D8; --dg-label: #52525B; --dg-node-lit: #FFFFFF;
   --k-flow: #EB0000; --k-p1: #0A6CFF; --k-p3: #7C3AED; --k-p5: #E08A00; --k-p7: #009B80;
   --card-shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.06);
 }
-.dark .sbb-diagram, .dark .status-pill, .dark #sbb-header, .dark .card {
+.dark .sbb-diagram, .dark .status-pill, .dark #sbb-header, .dark .card, .dark #form-card {
   --dg-bg: #17171A; --dg-node: #212126; --dg-stroke: #33333A; --dg-text: #F4F4F5;
   --dg-sub: #A1A1AA; --dg-edge: #3F3F46; --dg-label: #A1A1AA; --dg-node-lit: #2A2A31;
   --k-flow: #FF4D4D; --k-p1: #5B9BFF; --k-p3: #A78BFA; --k-p5: #FBBF24; --k-p7: #2DD4B0;
@@ -194,6 +194,13 @@ CSS = """
 .dark #reset-btn::before { background-image: """ + RESET_DARK + """; }
 #send-btn, #reset-btn { border-radius: 12px !important; }
 
+/* ---- the backend's form under the chat ---- */
+#form-card { border-radius: 16px !important; border: 1px solid var(--dg-stroke, #E1E1E4) !important;
+  padding: 12px 14px !important; box-shadow: var(--card-shadow) !important; }
+#form-label p { margin: 0 0 6px; font-weight: 600; }
+#form-choice .wrap { gap: 8px; }
+#form-choice label { border-radius: 999px !important; padding: 7px 14px !important; cursor: pointer; }
+#form-send { border-radius: 12px !important; min-width: 110px; }
 /* ---- cards ---- */
 .card { border-radius: 16px !important; box-shadow: var(--card-shadow) !important; }
 .status-pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px;

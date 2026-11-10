@@ -22,7 +22,8 @@ import gradio as gr
 
 from chat.backend import Backend, DemoBackend, load_backend
 from chat.diagram import CSS, HEADER_HTML, LOAD_JS, TOGGLE_JS, render_diagram, status_pill
-from chat.ui import TRACE_HEADERS, handle_message, new_session, status_label
+from chat.ui import (TRACE_HEADERS, choice_items, current_form, handle_message, new_session,
+                     status_label, submit_form)
 
 SBB_RED = gr.themes.Color(
     c50="#FFECEC", c100="#FFD1D1", c200="#FFA3A3", c300="#FF6B6B", c400="#F53333",
@@ -49,6 +50,16 @@ def build_demo(backend: Backend | None = None) -> gr.Blocks:
             with gr.Column(scale=4):
                 chatbot = gr.Chatbot(label="Chat", height=520, elem_classes="card")
                 status = gr.HTML("")
+                # The backend's form (state["form"]): rendered here, answered here, decided there.
+                with gr.Group(visible=False, elem_id="form-card") as form_box:
+                    form_label = gr.Markdown("", elem_id="form-label")
+                    form_choice = gr.Radio(choices=[], value=None, visible=False, show_label=False,
+                                           elem_id="form-choice")
+                    with gr.Row(equal_height=True):
+                        form_number = gr.Number(value=None, visible=False, show_label=False,
+                                                elem_id="form-number")
+                        form_send = gr.Button("Confirm", variant="primary", visible=False, scale=0,
+                                              elem_id="form-send")
                 box = gr.Textbox(placeholder="e.g. St. Gallen to Zürich HB at 8:00, CHF 46 ticket ...",
                                  label="Your message (Enter to send, Shift+Enter for a new line)",
                                  lines=1, max_lines=6)  # lines=1 makes Enter submit in Gradio 6
@@ -63,20 +74,45 @@ def build_demo(backend: Backend | None = None) -> gr.Blocks:
                     trace = gr.Dataframe(headers=TRACE_HEADERS, value=[], wrap=True,
                                          interactive=False, label="pattern · actor · what crossed")
 
-        def on_send(message, history, sess):
-            history, sess = handle_message(message, history, sess, backend)
+        def form_view(sess):
+            form = current_form(sess)
+            hidden = (gr.Group(visible=False), "", gr.Radio(choices=[], value=None, visible=False),
+                      gr.Number(value=None, visible=False), gr.Button(visible=False))
+            if form is None or form["kind"] not in ("choice", "number"):
+                return hidden  # text, date, time: the passenger types in the message box
+            label = str(form.get("label") or "Your answer")
+            if form["kind"] == "choice":
+                return (gr.Group(visible=True), label,
+                        gr.Radio(choices=choice_items(form), value=None, visible=True),
+                        gr.Number(value=None, visible=False), gr.Button(visible=False))
+            return (gr.Group(visible=True), label, gr.Radio(choices=[], value=None, visible=False),
+                    gr.Number(value=None, visible=True, minimum=form.get("min")), gr.Button(visible=True))
+
+        def view(history, sess):
             label = status_label(sess.get("status"))
-            return ("", history, sess, sess["trace_rows"],
-                    status_pill(sess.get("status"), label),
-                    render_diagram(sess["trace_rows"], sess.get("status")))
+            return (history, sess, sess["trace_rows"], status_pill(sess.get("status"), label),
+                    render_diagram(sess["trace_rows"], sess.get("status")), *form_view(sess))
+
+        def on_send(message, history, sess):
+            return ("", *view(*handle_message(message, history, sess, backend)))
+
+        def on_choice(choice, history, sess):
+            return view(*submit_form(choice, None, history, sess, backend))
+
+        def on_number(number, history, sess):
+            return view(*submit_form(None, number, history, sess, backend))
 
         def on_reset():
-            return [], new_session(), [], "", render_diagram()
+            return view([], new_session())
 
-        outputs = [box, chatbot, session, trace, status, diagram]
-        send.click(on_send, [box, chatbot, session], outputs)
-        box.submit(on_send, [box, chatbot, session], outputs)
-        reset.click(on_reset, None, [chatbot, session, trace, status, diagram])
+        shown = [chatbot, session, trace, status, diagram, form_box, form_label, form_choice,
+                 form_number, form_send]
+        send.click(on_send, [box, chatbot, session], [box, *shown])
+        box.submit(on_send, [box, chatbot, session], [box, *shown])
+        form_choice.input(on_choice, [form_choice, chatbot, session], shown)  # a click sends
+        form_send.click(on_number, [form_number, chatbot, session], shown)
+        form_number.submit(on_number, [form_number, chatbot, session], shown)
+        reset.click(on_reset, None, shown)
         theme_btn.click(None, None, None, js=TOGGLE_JS)
     return demo
 
